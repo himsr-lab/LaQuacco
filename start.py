@@ -26,7 +26,7 @@ for file in sorted(FILES):
                 image_description = page.tags["ImageDescription"].value  # OME-TIFF
                 image_dictionary = xmltodict.parse(image_description)
                 vendor_id = next(iter(image_dictionary))  # first and only key
-                print(image_dictionary[vendor_id]["Name"])
-
+                page_name = image_dictionary[vendor_id]["Name"]
+            print(page_name)
             # get pixel data
             pixels = page.asarray()
