@@ -3,33 +3,33 @@ import tifffile
 import xmltodict
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy as sp
 from typing import Any, Dict
 
 FILES = [
-    r"C:\Users\Christian Rickert\Desktop\Polaris\100923 P9huP54-2 #04 B1A1P1_[8520,46568]_component_data.tif",
+    # r"C:\Users\Christian Rickert\Desktop\Polaris\100923 P9huP54-2 #04 B1A1P1_[8520,46568]_component_data.tif",
+    r"/Users/christianrickert/Desktop/Polaris/100923 P9huP54-2 #04 B1A1P1_[8520,46568]_component_data.tif",
     # r"C:\Users\Christian Rickert\Desktop\MIBI\[FOV2-1] UCD134_bottom_sample_SA21-06560_2023-05-24_10.tif",
+    # r"/Users/christianrickert/Desktop/MIBI/[FOV2-1] UCD134_bottom_sample_SA21-06560_2023-05-24_10.tif",
 ]
 
 
-def get_bottom_index(sorted_list, percentage):
-    """Return a stop index for a slice of a sorted array with the bottom (percentage) elements.
+def get_signal_threshold(array):
+    """Return the threshold value for separating background values from signa valuesl.
+    In short, we're transforming the positive array values to be normally distributed.
+    From this distribution picture a boxplot, where we're treating the background values
+    as low-value "outliers" from our high-value signals.
     Keyword arguments:
-    sorted_array  -- a sorted list or Numpy array
-    percentage  -- the upper percentage limit for the slice
+    array  -- a Numpy array to be normalized
     """
-    len_sorted_list = len(sorted_list)
-    return int(percentage / 100 * len_sorted_list)
-
-
-def get_top_index(sorted_list, percentage):
-    """Return a start index for a slice of a sorted array with the top (percentage) elements.
-    Keyword arguments:
-    sorted_array  -- a sorted list or Numpy array
-    percentage  -- the lower percentage limit for the slice
-    """
-    len_sorted_list = len(sorted_list)
-    percentage = percentage or len_sorted_list
-    return int((100 - percentage) / 100 * len_sorted_list)
+    array_norm, lmbda = sp.stats.boxcox(array[array > 0])  # positive values only
+    quartile_one = np.percentile(array_norm, 25)  # Q1
+    interquartile_range = sp.stats.iqr(array_norm)  # IQR
+    bottom_whisker = quartile_one - 1.5 * interquartile_range
+    signal_threshold = sp.special.inv_boxcox(bottom_whisker, lmbda)
+    return (
+        signal_threshold if not np.isnan(signal_threshold) else np.min(array[array > 0])
+    )
 
 
 for file in sorted(FILES):
@@ -42,8 +42,9 @@ for file in sorted(FILES):
         series = tif.series
         pages = series[0].shape[0]
         # access pages of first series
-        for page in tif.pages[0:pages]:
+        for chan, page in enumerate(tif.pages[0:pages]):
             # get page name
+            page_name = None
             try:
                 page_name = page.tags["PageName"].value  # regular TIFF
             except KeyError:
@@ -51,13 +52,19 @@ for file in sorted(FILES):
                 image_dictionary = xmltodict.parse(image_description)
                 vendor_id = next(iter(image_dictionary))  # first and only key
                 page_name = image_dictionary[vendor_id]["Name"]
-            print(page_name)
+            finally:
+                if not page_name:
+                    page_name = str(chan)
+
             # get pixel data as flattend Numpy array
             pixels = page.asarray().flatten()
+            print(f"{page_name}:\t {get_signal_threshold(pixels)}")
             # pixels = np.log(pixels[pixels > 0])
-            plt.hist(pixels, bins=256)
+            plt.hist(pixels, bins=int(10 * np.max(pixels)), color="black")
+            plt.axvline(x=get_signal_threshold(pixels), color="red", linestyle="--")
+            plt.axvline(
+                x=np.percentile(pixels[pixels > 0], 10), color="green", linestyle="--"
+            )
             plt.show()
-            # sorted_pixels = np.sort(pixels)
             # print(np.mean(sorted_pixels[: get_bottom_index(sorted_pixels, 10)]))
             # print(np.mean(sorted_pixels[get_top_index(sorted_pixels, 20) :]))
-            break
