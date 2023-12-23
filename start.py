@@ -1,17 +1,35 @@
+import fnmatch
+import math
 import os
 import tifffile
 import xmltodict
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 import scipy as sp
 from typing import Any, Dict
 
-FILES = [
-    # r"C:\Users\Christian Rickert\Desktop\Polaris\100923 P9huP54-2 #04 B1A1P1_[8520,46568]_component_data.tif",
-    r"/Users/christianrickert/Desktop/Polaris/100923 P9huP54-2 #04 B1A1P1_[8520,46568]_component_data.tif",
-    # r"C:\Users\Christian Rickert\Desktop\MIBI\[FOV2-1] UCD134_bottom_sample_SA21-06560_2023-05-24_10.tif",
-    # r"/Users/christianrickert/Desktop/MIBI/[FOV2-1] UCD134_bottom_sample_SA21-06560_2023-05-24_10.tif",
-]
+
+# functions
+def get_files(path="", pat=None, anti=None, recurse=True):
+    """Iterate through all files in a folder structure and
+    return a list of matching files.
+
+    Keyword arguments:
+    path -- the path to a folder containing files (default "")
+    pat -- string pattern that needs to be part of the file name (default "None")
+    anti -- string pattern that may not be part of the file name (default "None")
+    recurse -- boolen that allows the function to work recursively (default "False")
+    """
+    FILES = []
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            file = os.path.join(root, file)
+            if fnmatch.fnmatch(file, pat) and not fnmatch.fnmatch(file, anti):
+                FILES.append(file)
+        if not recurse:
+            break  # from `os.walk()`
+    return FILES
 
 
 def get_signal_threshold(array):
@@ -32,7 +50,28 @@ def get_signal_threshold(array):
     )
 
 
-for file in sorted(FILES):
+def extend_dict_list(dictionary, key, value):
+    """Appends a value to a dictionary's list, if the key already exists.
+    Creates the key and sets the value, if the key has been missing.
+    Keyword arguments:
+    dictionary  -- an existing dictionary
+    key  -- key for the list to be created
+    value -- value to add to the list
+    """
+    if key not in dictionary:
+        dictionary[key] = []
+    dictionary[key].append(value)
+
+
+files = get_files(path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti="")
+sampling_percentage = 25
+sampling_size = math.ceil(sampling_percentage / 100 * len(files)) or 1
+samples = random.sample(files, sampling_size)
+print(f"{len(files)}, {len(samples)}")
+
+channel_stats: Dict[str, Any] = dict()
+
+for file in sorted(samples):
     name = os.path.basename(file)
     print(f"\n\tFILE: {name}", flush=True)
 
@@ -43,28 +82,46 @@ for file in sorted(FILES):
         pages = series[0].shape[0]
         # access pages of first series
         for chan, page in enumerate(tif.pages[0:pages]):
-            # get page name
-            page_name = None
+            # identify channel with page name
+            channel_name = None
             try:
-                page_name = page.tags["PageName"].value  # regular TIFF
+                channel_name = page.tags["PageName"].value  # regular TIFF
             except KeyError:
                 image_description = page.tags["ImageDescription"].value  # OME-TIFF
                 image_dictionary = xmltodict.parse(image_description)
                 vendor_id = next(iter(image_dictionary))  # first and only key
-                page_name = image_dictionary[vendor_id]["Name"]
-            finally:
-                if not page_name:
-                    page_name = str(chan)
-
+                try:
+                    channel_name = image_dictionary[vendor_id]["Name"]
+                except KeyError:
+                    channel_name = str(chan)
             # get pixel data as flattend Numpy array
             pixels = page.asarray().flatten()
-            print(f"{page_name}:\t {get_signal_threshold(pixels)}")
+            # prepare channel statistics
+            if channel_name not in channel_stats:
+                channel_stats[channel_name] = {}
+            # get minimum signal value (threshold)
+            signal_min = get_signal_threshold(pixels)
+            # get signal mean
+            signal_mean = np.mean(pixels[pixels >= signal_min])
+            extend_dict_list(channel_stats[channel_name], "signal_mean", signal_mean)
+            # get signal standard deviation
+            signal_std = np.std(pixels[pixels >= signal_min])
+            extend_dict_list(channel_stats[channel_name], "signal_std", signal_std)
+            # get background mean
+            backgr_mean = np.mean(pixels[pixels < signal_min])
+            extend_dict_list(channel_stats[channel_name], "backgr_mean", backgr_mean)
+            # get background standard deviation
+            backgr_std = np.std(pixels[pixels < signal_min])
+            extend_dict_list(channel_stats[channel_name], "background_std", backgr_std)
+
+            # print(f"{channel_name}:\t {get_signal_threshold(pixels)}")
             # pixels = np.log(pixels[pixels > 0])
-            plt.hist(pixels, bins=int(10 * np.max(pixels)), color="black")
-            plt.axvline(x=get_signal_threshold(pixels), color="red", linestyle="--")
-            plt.axvline(
-                x=np.percentile(pixels[pixels > 0], 10), color="green", linestyle="--"
-            )
-            plt.show()
+            # plt.hist(pixels, bins=int(10 * np.max(pixels)), color="black")
+            # plt.axvline(x=get_signal_threshold(pixels), color="green", linestyle="--")
+            # plt.axvline(
+            #    x=np.percentile(pixels[pixels > 0], 10), color="red", linestyle="--"
+            # )
+            # plt.show()
             # print(np.mean(sorted_pixels[: get_bottom_index(sorted_pixels, 10)]))
             # print(np.mean(sorted_pixels[get_top_index(sorted_pixels, 20) :]))
+        print(channel_stats)
