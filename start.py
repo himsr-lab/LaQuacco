@@ -127,14 +127,12 @@ def get_signal_min(array, lmbda=None):
     array_norm, lmbda, *_ = sp.stats.boxcox(
         array[array > 0], lmbda=lmbda
     )  # computationally expensive, when lambda is unknown
-    quartile_one = np.percentile(array_norm, 25)  # Q1
-    interquartile_range = sp.stats.iqr(array_norm)  # IQR
-    bottom_whisker = quartile_one - 1.5 * interquartile_range
-    signal_threshold = sp.special.inv_boxcox(bottom_whisker, lmbda)
+    q1 = np.percentile(array_norm, 25)  # Q1
+    iqr = sp.stats.iqr(array_norm)  # IQR
+    limit = q1 - 1.5 * iqr
+    sig_min = sp.special.inv_boxcox(limit, lmbda)
     return (
-        signal_threshold
-        if not np.isnan(signal_threshold)
-        else np.min(array[array > 0]),
+        sig_min if not np.isnan(sig_min) else np.min(array[array > 0]),
         lmbda,
     )
 
