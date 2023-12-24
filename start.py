@@ -148,8 +148,8 @@ channel_stats = get_chan_stats(sorted(samples))
 # print(channel_stats)
 
 for file in sorted(files):
-    if file not in channel_stats["images"]:
-        name = os.path.basename(file)
+    name = os.path.basename(file)
+    if name not in channel_stats["images"]:
         print(f"\tIMAGE: {name}", flush=True)
 
     # print(f"{channel_name}:\t {get_signal_min(pixels)}")
