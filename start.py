@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import platform
 import random
+import statistics
 import tifffile
 import xmltodict
 import matplotlib.pyplot as plt
@@ -128,10 +129,13 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
+        # path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
+        path=r"/Users/christianrickert/Desktop/MIBI",
+        pat="*.tif",
+        anti="",
     )
     # get a sample of the image files
-    sampling_perc = 20
+    sampling_perc = 5
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
     # analyze the sample
@@ -145,10 +149,50 @@ if __name__ == "__main__":
     # for image, channel_stat in channels_stats.items():
     #    print(f"{image}\n{channel_stat}", end="\n")
     chans = [list(channel_stats.keys()) for channel_stats in channels_stats.values()][0]
-    print(chans)
-    print(channels_stats[next(iter(channels_stats))][chans[0]])
-#    means = [
-#        channel_stats[chans[-2]]["signal_mean"]
-#        for channel_stats in channels_stats.values()
-#    ]
-#    print(means)
+    # print(chans)
+    # print(channels_stats[next(iter(channels_stats))][chans[0]])
+
+    # channel = "DAPI (DAPI)"
+    channel = "dsDNA (89)"
+
+    # TODO: write function to consolidate code
+    signal_means = [
+        channel_stats[channel]["signal_mean"]
+        for channel_stats in channels_stats.values()
+    ]
+    signal_mean = statistics.mean(signal_means)
+    signal_stds = [
+        channel_stats[channel]["signal_std"]
+        for channel_stats in channels_stats.values()
+    ]
+    signal_std = statistics.mean(signal_stds)
+    backgr_means = [
+        channel_stats[channel]["backgr_mean"]
+        for channel_stats in channels_stats.values()
+    ]
+    backgr_mean = statistics.mean(backgr_means)
+    backgr_stds = [
+        channel_stats[channel]["backgr_std"]
+        for channel_stats in channels_stats.values()
+    ]
+    backgr_std = statistics.mean(backgr_stds)
+
+    if backgr_mean - 2 * backgr_std > 0:
+        plt.axhline(y=backgr_mean - 2 * backgr_std, color="black", linestyle="dotted")
+    if backgr_mean - backgr_std > 0:
+        plt.axhline(y=backgr_mean - backgr_std, color="black", linestyle="dashed")
+    plt.axhline(y=backgr_mean, color="black", linestyle="dashdot")
+    plt.axhline(y=backgr_mean + backgr_std, color="black", linestyle="dashed")
+    plt.axhline(y=backgr_mean + 2 * backgr_std, color="black", linestyle="dotted")
+    plt.plot(backgr_means, color="black", linestyle="solid")
+
+    if signal_mean - 2 * signal_std > 0:
+        plt.axhline(y=signal_mean - 2 * signal_std, color="blue", linestyle="dotted")
+    if signal_mean - signal_std > 0:
+        plt.axhline(y=signal_mean - signal_std, color="blue", linestyle="dashed")
+    plt.axhline(y=signal_mean, color="blue", linestyle="dashdot")
+    plt.axhline(y=signal_mean + signal_std, color="blue", linestyle="dashed")
+    plt.axhline(y=signal_mean + 2 * signal_std, color="blue", linestyle="dotted")
+    plt.plot(signal_means, color="blue", linestyle="solid")
+
+    plt.show()
