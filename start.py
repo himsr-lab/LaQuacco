@@ -182,7 +182,7 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 100
+    sampling_perc = 30
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -306,7 +306,8 @@ if __name__ == "__main__":
     #    left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
     # )
     # plt.subplots_adjust(left=0.2)
-    ax.boxplot(means, meanline=True, showmeans=True)
+
+    bp = ax.boxplot(means, meanline=True, showmeans=True)
     ax.set_xticks(
         [y + 1 for y in range(len(channels))],
         labels=channels,
