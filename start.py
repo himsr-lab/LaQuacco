@@ -7,6 +7,7 @@ import random
 import statistics
 import tifffile
 import xmltodict
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
@@ -106,6 +107,15 @@ def get_chan_stats(image, lmbdas=None):
     return (image, chan_stats)
 
 
+def get_colormap_values(count):
+    """Return a colormap with `counts` number of colors.
+    Keyword arguments:
+    count  -- number of colors to be generated
+    """
+    color_points = np.linspace(0, 1, count)
+    return [cm.hsv(color_point) for color_point in color_points]
+
+
 def get_signal_min(array, lmbda=None):
     """Return the minimum signal value above background. First, we find the best transformation of
     all positive array values so that the data will be normally distributed. Second, we calculate
@@ -196,6 +206,8 @@ if __name__ == "__main__":
     ]
     backgr_std = statistics.mean(backgr_stds)
 
+    colormap = get_colormap_values(len(chans))
+
     if backgr_mean - 2 * backgr_std > 0:
         plt.axhline(y=backgr_mean - 2 * backgr_std, color="black", linestyle="dotted")
     if backgr_mean - backgr_std > 0:
@@ -224,7 +236,7 @@ if __name__ == "__main__":
         signal_means,
         yerr=signal_errs,
         fmt="-o",
-        color="blue",
+        color=colormap[0],
     )
 
     plt.show()
