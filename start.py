@@ -92,10 +92,17 @@ def get_chan_stats(image, lmbdas=None):
             chan_stats[chan_name]["signal_mean"] = np.mean(pixels[pixels >= signal_min])
             # get signal standard deviation
             chan_stats[chan_name]["signal_std"] = np.std(pixels[pixels >= signal_min])
+            chan_stats[chan_name]["signal_err"] = chan_stats[chan_name][
+                "signal_std"
+            ] / np.sqrt(len(pixels[pixels >= signal_min]) - 1.0)
             # get background mean
             chan_stats[chan_name]["backgr_mean"] = np.mean(pixels[pixels < signal_min])
             # get background standard deviation
             chan_stats[chan_name]["backgr_std"] = np.std(pixels[pixels < signal_min])
+            # calculate standard error of the mean
+            chan_stats[chan_name]["backgr_err"] = chan_stats[chan_name][
+                "backgr_std"
+            ] / np.sqrt(len(pixels[pixels < signal_min]) - 1.0)
     return (image, chan_stats)
 
 
@@ -129,13 +136,16 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        # path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
-        path=r"/Users/christianrickert/Desktop/MIBI",
+        path=r"/Users/christianrickert/Desktop/Polaris",
         pat="*.tif",
         anti="",
+        # path=r"/Users/christianrickert/Desktop/MIBI",
+        # pat="*.tif",
+        # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 5
+    sampling_perc = 100
+    # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
     # analyze the sample
@@ -152,10 +162,11 @@ if __name__ == "__main__":
     # print(chans)
     # print(channels_stats[next(iter(channels_stats))][chans[0]])
 
-    # channel = "DAPI (DAPI)"
-    channel = "dsDNA (89)"
+    channel = "DAPI (DAPI)"
+    # channel = "dsDNA (89)"
 
     # TODO: write function to consolidate code
+
     signal_means = [
         channel_stats[channel]["signal_mean"]
         for channel_stats in channels_stats.values()
@@ -163,6 +174,10 @@ if __name__ == "__main__":
     signal_mean = statistics.mean(signal_means)
     signal_stds = [
         channel_stats[channel]["signal_std"]
+        for channel_stats in channels_stats.values()
+    ]
+    signal_errs = [
+        channel_stats[channel]["signal_err"]
         for channel_stats in channels_stats.values()
     ]
     signal_std = statistics.mean(signal_stds)
@@ -175,6 +190,10 @@ if __name__ == "__main__":
         channel_stats[channel]["backgr_std"]
         for channel_stats in channels_stats.values()
     ]
+    backgr_errs = [
+        channel_stats[channel]["backgr_err"]
+        for channel_stats in channels_stats.values()
+    ]
     backgr_std = statistics.mean(backgr_stds)
 
     if backgr_mean - 2 * backgr_std > 0:
@@ -184,8 +203,14 @@ if __name__ == "__main__":
     plt.axhline(y=backgr_mean, color="black", linestyle="dashdot")
     plt.axhline(y=backgr_mean + backgr_std, color="black", linestyle="dashed")
     plt.axhline(y=backgr_mean + 2 * backgr_std, color="black", linestyle="dotted")
-    plt.plot(backgr_means, color="black", linestyle="solid")
-
+    # plt.plot(backgr_means, color="black", linestyle="solid")
+    plt.errorbar(
+        range(len(backgr_means)),
+        backgr_means,
+        yerr=backgr_errs,
+        fmt="-o",
+        color="black",
+    )
     if signal_mean - 2 * signal_std > 0:
         plt.axhline(y=signal_mean - 2 * signal_std, color="blue", linestyle="dotted")
     if signal_mean - signal_std > 0:
@@ -193,6 +218,13 @@ if __name__ == "__main__":
     plt.axhline(y=signal_mean, color="blue", linestyle="dashdot")
     plt.axhline(y=signal_mean + signal_std, color="blue", linestyle="dashed")
     plt.axhline(y=signal_mean + 2 * signal_std, color="blue", linestyle="dotted")
-    plt.plot(signal_means, color="blue", linestyle="solid")
+    # plt.plot(signal_means, color="blue", linestyle="solid")
+    plt.errorbar(
+        range(len(signal_means)),
+        signal_means,
+        yerr=signal_errs,
+        fmt="-o",
+        color="blue",
+    )
 
     plt.show()
