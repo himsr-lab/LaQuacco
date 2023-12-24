@@ -4,7 +4,6 @@ import multiprocessing
 import os
 import platform
 import random
-import statistics
 import tifffile
 import xmltodict
 import matplotlib.cm as cm
@@ -219,21 +218,21 @@ if __name__ == "__main__":
     for index, channel in enumerate(channels):
         # get statistics summary
         signal_means = get_chans_stats_means(samples_results, channel, "signal_mean")
-        signal_mean = statistics.mean(signal_means)
+        signal_mean = np.nanmean(signal_means)
         signal_stds = get_chans_stats_means(samples_results, channel, "signal_std")
         signal_errs = get_chans_stats_means(samples_results, channel, "signal_err")
-        signal_std = statistics.mean(signal_stds)
+        signal_std = np.nanmean(signal_stds)
         background_means = get_chans_stats_means(
             samples_results, channel, "background_mean"
         )
-        background_mean = statistics.mean(background_means)
+        background_mean = np.nanmean(background_means)
         background_stds = get_chans_stats_means(
             samples_results, channel, "background_std"
         )
         background_errs = get_chans_stats_means(
             samples_results, channel, "background_err"
         )
-        background_std = statistics.mean(background_stds)
+        background_std = np.nanmean(background_stds)
 
         def draw_levey_jennings_plot():
             pass
