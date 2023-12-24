@@ -1,11 +1,13 @@
 import fnmatch
 import math
+import multiprocessing
 import os
+import platform
+import random
 import tifffile
 import xmltodict
 import matplotlib.pyplot as plt
 import numpy as np
-import random
 import scipy as sp
 from typing import Any, Dict
 
@@ -46,74 +48,54 @@ def get_files(path="", pat=None, anti=None, recurse=True):
     return FILES
 
 
-def get_chan_stats(images):
+def get_chan_stats(image, lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
     images -- image file list
     """
     chan_stats = dict()
-    for image in images:
-        name = os.path.basename(image)
-        extend_dict_list(chan_stats, "images", name)
-        print(f"\tSAMPLE: {name}", flush=True)
-        # open TIFF file to extract image information
-        with tifffile.TiffFile(image) as tif:
-            # use data from first series (of pages) only
-            series = tif.series
-            pages = series[0].shape[0]
-            # access pages of first series
-            for chan, page in enumerate(tif.pages[0:pages]):
-                # identify channel with page name
-                chan_name = None
+    name = os.path.basename(image)
+    print(f"\tSAMPLE: {name}", flush=True)
+    # open TIFF file to extract image information
+    with tifffile.TiffFile(image) as tif:
+        # use data from first series (of pages) only
+        series = tif.series
+        pages = series[0].shape[0]
+        # access pages of first series
+        for chan, page in enumerate(tif.pages[0:pages]):
+            # identify channel with page name
+            chan_name = None
+            try:
+                chan_name = page.tags["PageName"].value  # regular TIFF
+            except KeyError:
+                img_descr = page.tags["ImageDescription"].value  # OME-TIFF
+                img_dict = xmltodict.parse(img_descr)
+                vendor_id = next(iter(img_dict))  # first and only key
                 try:
-                    chan_name = page.tags["PageName"].value  # regular TIFF
+                    chan_name = img_dict[vendor_id]["Name"]
                 except KeyError:
-                    img_descr = page.tags["ImageDescription"].value  # OME-TIFF
-                    img_dict = xmltodict.parse(img_descr)
-                    vendor_id = next(iter(img_dict))  # first and only key
-                    try:
-                        chan_name = img_dict[vendor_id]["Name"]
-                    except KeyError:
-                        chan_name = str(chan)
-                # get pixel data as flattend Numpy array
-                pixels = page.asarray().flatten()
-                # prepare channel statistics
-                if chan_name not in chan_stats:
-                    chan_stats[chan_name] = {}
-                # get minimum signal value (threshold) and boxcox lambda
-                if "boxcox_lmbda" in chan_stats[chan_name]:
-                    signal_min, _ = get_signal_min(
-                        pixels, lmbda=chan_stats[chan_name]["boxcox_lmbda"]
-                    )
-                else:  # get lambda from first channels of first image
-                    signal_min, lmbda = get_signal_min(pixels)
-                    chan_stats[chan_name]["boxcox_lmbda"] = lmbda
-                # get signal mean
-                extend_dict_list(
-                    chan_stats[chan_name],
-                    "signal_mean",
-                    np.mean(pixels[pixels >= signal_min]),
-                )
-                # get signal standard deviation
-                extend_dict_list(
-                    chan_stats[chan_name],
-                    "signal_std",
-                    np.std(pixels[pixels >= signal_min]),
-                )
-                # get background mean
-                extend_dict_list(
-                    chan_stats[chan_name],
-                    "backgr_mean",
-                    np.mean(pixels[pixels < signal_min]),
-                )
-                # get background standard deviation
-                extend_dict_list(
-                    chan_stats[chan_name],
-                    "backgr_std",
-                    np.std(pixels[pixels < signal_min]),
-                )
-    return chan_stats
+                    chan_name = str(chan)
+            # get pixel data as flattend Numpy array
+            pixels = page.asarray().flatten()
+            # prepare channel statistics
+            if chan_name not in chan_stats:
+                chan_stats[chan_name] = {}
+            # get minimum signal value (threshold) and boxcox lambda
+            if lmbdas and chan < len(lmbdas):
+                signal_min, _ = get_signal_min(pixels, lmbda[chan])
+            else:
+                signal_min, lmbda = get_signal_min(pixels)
+            chan_stats[chan_name]["lmbda"] = lmbda
+            # get signal mean
+            chan_stats[chan_name]["signal_mean"] = np.mean(pixels[pixels >= signal_min])
+            # get signal standard deviation
+            chan_stats[chan_name]["signal_std"] = np.std(pixels[pixels >= signal_min])
+            # get background mean
+            chan_stats[chan_name]["backgr_mean"] = np.mean(pixels[pixels < signal_min])
+            # get background standard deviation
+            chan_stats[chan_name]["backgr_std"] = np.std(pixels[pixels < signal_min])
+    return (image, chan_stats)
 
 
 def get_signal_min(array, lmbda=None):
@@ -137,28 +119,26 @@ def get_signal_min(array, lmbda=None):
     )
 
 
-files = get_files(path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti="")
-sampling_perc = 20
-sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
-samples = random.sample(files, sampling_size)
+PROCESSES = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
+# PROCESSES = 2
 
-channel_stats: Dict[str, Any] = dict()
+# main program
+if __name__ == "__main__":
+    # safe import of main module avoids spawning multiple processes simultaneously
+    if platform.system() == "Windows":
+        multiprocessing.freeze_support()  # required by 'multiprocessing'
 
-channel_stats = get_chan_stats(sorted(samples))
-# print(channel_stats)
-
-for file in sorted(files):
-    name = os.path.basename(file)
-    if name not in channel_stats["images"]:
-        print(f"\tIMAGE: {name}", flush=True)
-
-    # print(f"{channel_name}:\t {get_signal_min(pixels)}")
-    # pixels = np.log(pixels[pixels > 0])
-    # plt.hist(pixels, bins=int(10 * np.max(pixels)), color="black")
-    # plt.axvline(x=get_signal_min(pixels), color="green", linestyle="--")
-    # plt.axvline(
-    #    x=np.percentile(pixels[pixels > 0], 10), color="red", linestyle="--"
-    # )
-    # plt.show()
-    # print(np.mean(sorted_pixels[: get_bottom_index(sorted_pixels, 10)]))
-    # print(np.mean(sorted_pixels[get_top_index(sorted_pixels, 20) :]))
+    files = get_files(
+        path=r"/Users/christianrickert/Desktop/MIBI", pat="*.tif", anti=""
+    )
+    sampling_perc = 1
+    sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
+    samples = random.sample(files, sampling_size)
+    channel_stats: Dict[str, Any] = dict()
+    sample_args = [(sample, None) for sample in samples]
+    with multiprocessing.Pool(PROCESSES) as pool:
+        results = pool.starmap(get_chan_stats, sample_args)
+    channel_stats = {sample: result for sample, result in results}
+    # channel_stats = dict(sorted(channel_stats.items()))
+    for image, channel_stat in channel_stats.items():
+        print(f"{image}\n{channel_stat}", end="\n")
