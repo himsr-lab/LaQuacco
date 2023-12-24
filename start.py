@@ -155,17 +155,17 @@ def get_signal_min(array, lmbda=None):
     array_norm, lmbda, *_ = sp.stats.boxcox(
         array[array > 0], lmbda=lmbda
     )  # computationally expensive, when lambda is unknown
-    q1 = np.percentile(array_norm, 25)  # Q1
-    iqr = sp.stats.iqr(array_norm)  # IQR
-    limit = q1 - 1.5 * iqr
-    sig_min = sp.special.inv_boxcox(limit, lmbda)
+    lower_fourth = np.percentile(array_norm, 25)  # Q1
+    interquartile_range = sp.stats.iqr(array_norm)  # IQR
+    low_extr = lower_fourth - 1.5 * interquartile_range
+    sig_min = sp.special.inv_boxcox(low_extr, lmbda)
     return (
         sig_min if not np.isnan(sig_min) else np.min(array[array > 0]),
         lmbda,
     )
 
 
-processes = multiprocessing.cpu_count()  # // 2 or 1  # concurrent workers
+processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
 
 # main program
 if __name__ == "__main__":
@@ -174,7 +174,7 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/MIBI",
+        path=r"/Users/christianrickert/Desktop/Polaris",
         pat="*.tif",
         anti="",
         # path=r"/Users/christianrickert/Desktop/MIBI",
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 0.5
+    sampling_perc = 100
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -201,19 +201,15 @@ if __name__ == "__main__":
         list(channel_stats.keys()) for channel_stats in samples_results.values()
     ][0]
 
-    for channel in channels:
-        print(repr(channel))
     # print(samples_results[next(iter(samples_results))][chans[0]])
-
-    # channel = "DAPI (DAPI)"
-    # channel = "dsDNA (89)"
 
     # prepare colormap
     color_map = get_colormap_values(len(channels))
 
     # create figure and axes
     fig, ax = plt.subplots()
-    last_values = []
+    # last_values = []
+    means = []
 
     for index, channel in enumerate(channels):
         # get statistics summary
@@ -234,8 +230,8 @@ if __name__ == "__main__":
         )
         background_std = np.nanmean(background_stds)
 
-        def draw_levey_jennings_plot():
-            pass
+        # def draw_levey_jennings_plot():
+        #    pass
 
         #        if signal_mean - 2 * signal_std > 0:
         #            ax.axhline(
@@ -254,16 +250,17 @@ if __name__ == "__main__":
         #        ax.axhline(
         #            y=signal_mean + 2 * signal_std, color=color_map[index], linestyle="dotted"
         #        )
-        # ax.plot(signal_means, color=color_map[index], linestyle="solid")
-        last_values.append(signal_means[-1])
-        ax.errorbar(
-            range(len(signal_means)),
-            signal_means,
-            yerr=signal_errs,
-            fmt="o-",
-            color=color_map[index],
-            label=channel + " [SIG]",
-        )
+        #
+        # last_values.append(signal_means[-1])
+        # ax.errorbar(
+        #    range(len(signal_means)),
+        #    signal_means,
+        #    yerr=signal_errs,
+        #    fmt="o-",
+        #    color=color_map[index],
+        #    label=channel + " [SIG]",
+        # )
+        means.append(signal_means)
 
         # plot statistics summary
         #        if background_mean - 2 * background_std > 0:
@@ -283,33 +280,44 @@ if __name__ == "__main__":
         #        ax.axhline(
         #            y=background_mean + 2 * background_std, color=color_map[index], linestyle="dotted"
         #        )
-        # ax.plot(background_means, color=color_map[index], linestyle="solid")
-        # plt.subplots_adjust(left=0.30)
-        # ax.text(-1, signal_means[0], channel, color=color_map[index])
-        last_values.append(background_means[-1])
-        ax.errorbar(
-            range(len(background_means)),
-            background_means,
-            yerr=background_errs,
-            fmt=".--",
-            color=color_map[index],
-            label=channel + " [BGR]",
-        )
+        # last_values.append(background_means[-1])
+        # ax.errorbar(
+        #    range(len(background_means)),
+        #    background_means,
+        #    yerr=background_errs,
+        #    fmt=".--",
+        #    color=color_map[index],
+        #    label=channel + " [BGR]",
+        # )
 
     # order legend elements by first value plotted
-    handles, labels = plt.gca().get_legend_handles_labels()
-    zipped_legends = zip(handles, labels, last_values)
-    sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
-    handles, labels, _ = zip(*sorted_legends)
+    # handles, labels = plt.gca().get_legend_handles_labels()
+    # zipped_legends = zip(handles, labels, last_values)
+    # sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
+    # handles, labels, _ = zip(*sorted_legends)
     # draw legend
-    legend = ax.legend(
-        handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
-    )
+    # legend = ax.legend(
+    #    handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+    # )
     # adjust drawing area to fit legend
-    legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-    legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
-    fig.subplots_adjust(
-        left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
-    )
+    # legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    # legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
+    # fig.subplots_adjust(
+    #    left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
+    # )
     # plt.subplots_adjust(left=0.2)
+    ax.boxplot(means, meanline=True, showmeans=True)
+    ax.set_xticks(
+        [y + 1 for y in range(len(channels))],
+        labels=channels,
+        rotation=90,
+        fontsize="small",
+    )
+    # plt.yscale("log")
+    #    yticks = [0, 0.1]
+    ymax = np.nanmax(means)
+    #    while max(yticks) < np.max(means):
+    #        yticks.append(yticks[-1] * 10.0)
+    #    plt.gca().set_yticks(yticks)  # Set the ticks positions
+    #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
     plt.show()
