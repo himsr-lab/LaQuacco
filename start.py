@@ -130,16 +130,17 @@ if __name__ == "__main__":
     files = get_files(
         path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
     )
-    # get a subsample of all image files
+    # get a sample of the image files
     sampling_perc = 20
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
-    # analyze subsamples
+    # analyze the sample
     channels_stats: Dict[str, Any] = dict()
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
         results = pool.starmap(get_chan_stats, sample_args)
     channels_stats = {sample: result for sample, result in results}
+
     # channels_stats = dict(sorted(channels_stats.items()))
     # for image, channel_stat in channels_stats.items():
     #    print(f"{image}\n{channel_stat}", end="\n")
