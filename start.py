@@ -29,6 +29,18 @@ def extend_dict_list(dictionary, key, value):
     dictionary[key].append(value)
 
 
+def get_chans_stats_means(chans_stats, chan, stats):
+    """Returns the mean values from a list of dictionaries
+    for a given channel and statistics.
+
+    Keyword arguments:
+    chans_stats -- a list of channel statistics dictionaries
+    chan -- the key determining the channel value
+    stats -- the key determining the channel's statistics
+    """
+    return [chan_stats[chan][stats] for chan_stats in chans_stats.values()]
+
+
 def get_files(path="", pat=None, anti=None, recurse=True):
     """Iterate through all files in a folder structure and
     return a list of matching files.
@@ -92,18 +104,23 @@ def get_chan_stats(image, lmbdas=None):
             # get signal mean
             chan_stats[chan_name]["signal_mean"] = np.mean(pixels[pixels >= signal_min])
             # get signal standard deviation
-            chan_stats[chan_name]["signal_std"] = np.std(pixels[pixels >= signal_min])
-            chan_stats[chan_name]["signal_err"] = chan_stats[chan_name][
-                "signal_std"
-            ] / np.sqrt(len(pixels[pixels >= signal_min]) - 1.0)
+            chan_stats[chan_name]["signal_std"] = np.std(
+                pixels[pixels >= signal_min], ddof=1
+            )
+            # get standard error of the mean
+            chan_stats[chan_name]["signal_err"] = np.sqrt(
+                chan_stats[chan_name]["signal_std"] / len(pixels[pixels >= signal_min])
+            )
             # get background mean
             chan_stats[chan_name]["backgr_mean"] = np.mean(pixels[pixels < signal_min])
             # get background standard deviation
-            chan_stats[chan_name]["backgr_std"] = np.std(pixels[pixels < signal_min])
-            # calculate standard error of the mean
-            chan_stats[chan_name]["backgr_err"] = chan_stats[chan_name][
-                "backgr_std"
-            ] / np.sqrt(len(pixels[pixels < signal_min]) - 1.0)
+            chan_stats[chan_name]["backgr_std"] = np.std(
+                pixels[pixels < signal_min], ddof=1
+            )
+            # get standard error of the mean
+            chan_stats[chan_name]["backgr_err"] = np.sqrt(
+                chan_stats[chan_name]["backgr_std"] / len(pixels[pixels >= signal_min])
+            )
     return (image, chan_stats)
 
 
@@ -154,7 +171,7 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 100
+    sampling_perc = 30
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -175,63 +192,49 @@ if __name__ == "__main__":
     channel = "DAPI (DAPI)"
     # channel = "dsDNA (89)"
 
-    # TODO: write function to consolidate code
-
-    signal_means = [
-        channel_stats[channel]["signal_mean"]
-        for channel_stats in channels_stats.values()
-    ]
+    signal_means = get_chans_stats_means(channels_stats, channel, "signal_mean")
     signal_mean = statistics.mean(signal_means)
-    signal_stds = [
-        channel_stats[channel]["signal_std"]
-        for channel_stats in channels_stats.values()
-    ]
-    signal_errs = [
-        channel_stats[channel]["signal_err"]
-        for channel_stats in channels_stats.values()
-    ]
+    signal_stds = get_chans_stats_means(channels_stats, channel, "signal_std")
+    signal_errs = get_chans_stats_means(channels_stats, channel, "signal_err")
     signal_std = statistics.mean(signal_stds)
-    backgr_means = [
-        channel_stats[channel]["backgr_mean"]
-        for channel_stats in channels_stats.values()
-    ]
+    backgr_means = get_chans_stats_means(channels_stats, channel, "backgr_mean")
     backgr_mean = statistics.mean(backgr_means)
-    backgr_stds = [
-        channel_stats[channel]["backgr_std"]
-        for channel_stats in channels_stats.values()
-    ]
-    backgr_errs = [
-        channel_stats[channel]["backgr_err"]
-        for channel_stats in channels_stats.values()
-    ]
+    backgr_stds = get_chans_stats_means(channels_stats, channel, "backgr_std")
+    backgr_errs = get_chans_stats_means(channels_stats, channel, "backgr_err")
     backgr_std = statistics.mean(backgr_stds)
 
-    colormap = get_colormap_values(len(chans))
+    fig, axs = plt.subplots()
 
     if backgr_mean - 2 * backgr_std > 0:
-        plt.axhline(y=backgr_mean - 2 * backgr_std, color="black", linestyle="dotted")
+        axs.axhline(y=backgr_mean - 2 * backgr_std, color="black", linestyle="dotted")
     if backgr_mean - backgr_std > 0:
-        plt.axhline(y=backgr_mean - backgr_std, color="black", linestyle="dashed")
-    plt.axhline(y=backgr_mean, color="black", linestyle="dashdot")
-    plt.axhline(y=backgr_mean + backgr_std, color="black", linestyle="dashed")
-    plt.axhline(y=backgr_mean + 2 * backgr_std, color="black", linestyle="dotted")
-    # plt.plot(backgr_means, color="black", linestyle="solid")
-    plt.errorbar(
+        axs.axhline(y=backgr_mean - backgr_std, color="black", linestyle="dashed")
+    axs.axhline(y=backgr_mean, color="black", linestyle="dashdot")
+    axs.axhline(y=backgr_mean + backgr_std, color="black", linestyle="dashed")
+    axs.axhline(y=backgr_mean + 2 * backgr_std, color="black", linestyle="dotted")
+    # axs.plot(backgr_means, color="black", linestyle="solid")
+    axs.errorbar(
         range(len(backgr_means)),
         backgr_means,
         yerr=backgr_errs,
         fmt="-o",
         color="black",
     )
+
+    colormap = get_colormap_values(len(chans))
+
+    def draw_levey_jennings_plot():
+        pass
+
     if signal_mean - 2 * signal_std > 0:
-        plt.axhline(y=signal_mean - 2 * signal_std, color="blue", linestyle="dotted")
+        axs.axhline(y=signal_mean - 2 * signal_std, color="blue", linestyle="dotted")
     if signal_mean - signal_std > 0:
-        plt.axhline(y=signal_mean - signal_std, color="blue", linestyle="dashed")
-    plt.axhline(y=signal_mean, color="blue", linestyle="dashdot")
-    plt.axhline(y=signal_mean + signal_std, color="blue", linestyle="dashed")
-    plt.axhline(y=signal_mean + 2 * signal_std, color="blue", linestyle="dotted")
-    # plt.plot(signal_means, color="blue", linestyle="solid")
-    plt.errorbar(
+        axs.axhline(y=signal_mean - signal_std, color="blue", linestyle="dashed")
+    axs.axhline(y=signal_mean, color="blue", linestyle="dashdot")
+    axs.axhline(y=signal_mean + signal_std, color="blue", linestyle="dashed")
+    axs.axhline(y=signal_mean + 2 * signal_std, color="blue", linestyle="dotted")
+    # axs.plot(signal_means, color="blue", linestyle="solid")
+    axs.errorbar(
         range(len(signal_means)),
         signal_means,
         yerr=signal_errs,
