@@ -112,14 +112,17 @@ def get_chan_stats(image, lmbdas=None):
                 chan_stats[chan_name]["signal_std"] / len(pixels[pixels >= signal_min])
             )
             # get background mean
-            chan_stats[chan_name]["backgr_mean"] = np.mean(pixels[pixels < signal_min])
+            chan_stats[chan_name]["background_mean"] = np.mean(
+                pixels[pixels < signal_min]
+            )
             # get background standard deviation
-            chan_stats[chan_name]["backgr_std"] = np.std(
+            chan_stats[chan_name]["background_std"] = np.std(
                 pixels[pixels < signal_min], ddof=1
             )
             # get standard error of the mean
-            chan_stats[chan_name]["backgr_err"] = np.sqrt(
-                chan_stats[chan_name]["backgr_std"] / len(pixels[pixels >= signal_min])
+            chan_stats[chan_name]["background_err"] = np.sqrt(
+                chan_stats[chan_name]["background_std"]
+                / len(pixels[pixels >= signal_min])
             )
     return (image, chan_stats)
 
@@ -171,7 +174,7 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 30
+    sampling_perc = 100
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -199,7 +202,7 @@ if __name__ == "__main__":
 
     # create figure and axes
     fig, ax = plt.subplots()
-    first_values = []
+    last_values = []
 
     for index, channel in enumerate(channels):
         # get statistics summary
@@ -208,11 +211,17 @@ if __name__ == "__main__":
         signal_stds = get_chans_stats_means(channels_stats, channel, "signal_std")
         signal_errs = get_chans_stats_means(channels_stats, channel, "signal_err")
         signal_std = statistics.mean(signal_stds)
-        backgr_means = get_chans_stats_means(channels_stats, channel, "backgr_mean")
-        backgr_mean = statistics.mean(backgr_means)
-        backgr_stds = get_chans_stats_means(channels_stats, channel, "backgr_std")
-        backgr_errs = get_chans_stats_means(channels_stats, channel, "backgr_err")
-        backgr_std = statistics.mean(backgr_stds)
+        background_means = get_chans_stats_means(
+            channels_stats, channel, "background_mean"
+        )
+        background_mean = statistics.mean(background_means)
+        background_stds = get_chans_stats_means(
+            channels_stats, channel, "background_std"
+        )
+        background_errs = get_chans_stats_means(
+            channels_stats, channel, "background_err"
+        )
+        background_std = statistics.mean(background_stds)
 
         def draw_levey_jennings_plot():
             pass
@@ -235,52 +244,59 @@ if __name__ == "__main__":
         #            y=signal_mean + 2 * signal_std, color=color_map[index], linestyle="dotted"
         #        )
         # ax.plot(signal_means, color=color_map[index], linestyle="solid")
-        first_values.append(signal_means[0])
+        last_values.append(signal_means[-1])
         ax.errorbar(
             range(len(signal_means)),
             signal_means,
             yerr=signal_errs,
             fmt="o-",
             color=color_map[index],
-            label=channel + " [signal]",
+            label=channel + " [SIG]",
         )
 
         # plot statistics summary
-        #        if backgr_mean - 2 * backgr_std > 0:
+        #        if background_mean - 2 * background_std > 0:
         #            ax.axhline(
-        #                y=backgr_mean - 2 * backgr_std,
+        #                y=background_mean - 2 * background_std,
         #                color=color_map[index],
         #                linestyle="dotted",
         #            )
-        #        if backgr_mean - backgr_std > 0:
+        #        if background_mean - background_std > 0:
         #            ax.axhline(
-        #                y=backgr_mean - backgr_std, color=color_map[index], linestyle="dashed"
+        #                y=background_mean - background_std, color=color_map[index], linestyle="dashed"
         #            )
-        #        ax.axhline(y=backgr_mean, color=color_map[index], linestyle="dashdot")
+        #        ax.axhline(y=background_mean, color=color_map[index], linestyle="dashdot")
         #        ax.axhline(
-        #            y=backgr_mean + backgr_std, color=color_map[index], linestyle="dashed"
+        #            y=background_mean + background_std, color=color_map[index], linestyle="dashed"
         #        )
         #        ax.axhline(
-        #            y=backgr_mean + 2 * backgr_std, color=color_map[index], linestyle="dotted"
+        #            y=background_mean + 2 * background_std, color=color_map[index], linestyle="dotted"
         #        )
-        # ax.plot(backgr_means, color=color_map[index], linestyle="solid")
+        # ax.plot(background_means, color=color_map[index], linestyle="solid")
         # plt.subplots_adjust(left=0.30)
         # ax.text(-1, signal_means[0], channel, color=color_map[index])
-        first_values.append(backgr_means[0])
+        last_values.append(background_means[-1])
         ax.errorbar(
-            range(len(backgr_means)),
-            backgr_means,
-            yerr=backgr_errs,
+            range(len(background_means)),
+            background_means,
+            yerr=background_errs,
             fmt=".--",
             color=color_map[index],
-            label=channel + " [backgr]",
+            label=channel + " [BGR]",
         )
 
     # order legend elements by first value plotted
     handles, labels = plt.gca().get_legend_handles_labels()
-    zipped_legends = zip(handles, labels, first_values)
-    sorted_legends = sorted(zipped_legends, key=lambda legs: legs[-1], reverse=True)
+    zipped_legends = zip(handles, labels, last_values)
+    sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
     handles, labels, _ = zip(*sorted_legends)
+    # draw legend
+    legend = ax.legend(handles, labels, loc="center left", bbox_to_anchor=(1, 0.5))
+    # adjust drawing area to fit legend
+    legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
+    fig.subplots_adjust(
+        left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
+    )
     # plt.subplots_adjust(left=0.2)
-    ax.legend(handles, labels, loc="center left", fontsize="small")
     plt.show()
