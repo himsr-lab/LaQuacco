@@ -171,7 +171,7 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 100
+    sampling_perc = 30
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -199,6 +199,7 @@ if __name__ == "__main__":
 
     # create figure and axes
     fig, ax = plt.subplots()
+    first_values = []
 
     for index, channel in enumerate(channels):
         # get statistics summary
@@ -212,34 +213,6 @@ if __name__ == "__main__":
         backgr_stds = get_chans_stats_means(channels_stats, channel, "backgr_std")
         backgr_errs = get_chans_stats_means(channels_stats, channel, "backgr_err")
         backgr_std = statistics.mean(backgr_stds)
-        # plot statistics summary
-        #        if backgr_mean - 2 * backgr_std > 0:
-        #            ax.axhline(
-        #                y=backgr_mean - 2 * backgr_std,
-        #                color=color_map[index],
-        #                linestyle="dotted",
-        #            )
-        #        if backgr_mean - backgr_std > 0:
-        #            ax.axhline(
-        #                y=backgr_mean - backgr_std, color=color_map[index], linestyle="dashed"
-        #            )
-        #        ax.axhline(y=backgr_mean, color=color_map[index], linestyle="dashdot")
-        #        ax.axhline(
-        #            y=backgr_mean + backgr_std, color=color_map[index], linestyle="dashed"
-        #        )
-        #        ax.axhline(
-        #            y=backgr_mean + 2 * backgr_std, color=color_map[index], linestyle="dotted"
-        #        )
-        # ax.plot(backgr_means, color=color_map[index], linestyle="solid")
-        plt.subplots_adjust(left=0.30)
-        ax.text(-1, signal_means[0], channel, color=color_map[index])
-        ax.errorbar(
-            range(len(backgr_means)),
-            backgr_means,
-            yerr=backgr_errs,
-            fmt=".--",
-            color=color_map[index],
-        )
 
         def draw_levey_jennings_plot():
             pass
@@ -262,12 +235,52 @@ if __name__ == "__main__":
         #            y=signal_mean + 2 * signal_std, color=color_map[index], linestyle="dotted"
         #        )
         # ax.plot(signal_means, color=color_map[index], linestyle="solid")
+        first_values.append(signal_means[0])
         ax.errorbar(
             range(len(signal_means)),
             signal_means,
             yerr=signal_errs,
             fmt="o-",
             color=color_map[index],
+            label=channel + " [signal]",
         )
 
+        # plot statistics summary
+        #        if backgr_mean - 2 * backgr_std > 0:
+        #            ax.axhline(
+        #                y=backgr_mean - 2 * backgr_std,
+        #                color=color_map[index],
+        #                linestyle="dotted",
+        #            )
+        #        if backgr_mean - backgr_std > 0:
+        #            ax.axhline(
+        #                y=backgr_mean - backgr_std, color=color_map[index], linestyle="dashed"
+        #            )
+        #        ax.axhline(y=backgr_mean, color=color_map[index], linestyle="dashdot")
+        #        ax.axhline(
+        #            y=backgr_mean + backgr_std, color=color_map[index], linestyle="dashed"
+        #        )
+        #        ax.axhline(
+        #            y=backgr_mean + 2 * backgr_std, color=color_map[index], linestyle="dotted"
+        #        )
+        # ax.plot(backgr_means, color=color_map[index], linestyle="solid")
+        # plt.subplots_adjust(left=0.30)
+        # ax.text(-1, signal_means[0], channel, color=color_map[index])
+        first_values.append(backgr_means[0])
+        ax.errorbar(
+            range(len(backgr_means)),
+            backgr_means,
+            yerr=backgr_errs,
+            fmt=".--",
+            color=color_map[index],
+            label=channel + " [backgr]",
+        )
+
+    # order legend elements by first value plotted
+    handles, labels = plt.gca().get_legend_handles_labels()
+    zipped_legends = zip(handles, labels, first_values)
+    sorted_legends = sorted(zipped_legends, key=lambda legs: legs[-1], reverse=True)
+    handles, labels, _ = zip(*sorted_legends)
+    # plt.subplots_adjust(left=0.2)
+    ax.legend(handles, labels, loc="center left", fontsize="small")
     plt.show()
