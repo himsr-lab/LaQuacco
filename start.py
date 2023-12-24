@@ -89,17 +89,29 @@ def get_chan_stats(images):
                     signal_min, lmbda = get_signal_min(pixels)
                     chan_stats[chan_name]["boxcox_lmbda"] = lmbda
                 # get signal mean
-                signal_mean = np.mean(pixels[pixels >= signal_min])
-                extend_dict_list(chan_stats[chan_name], "signal_mean", signal_mean)
+                extend_dict_list(
+                    chan_stats[chan_name],
+                    "signal_mean",
+                    np.mean(pixels[pixels >= signal_min]),
+                )
                 # get signal standard deviation
-                signal_std = np.std(pixels[pixels >= signal_min])
-                extend_dict_list(chan_stats[chan_name], "signal_std", signal_std)
+                extend_dict_list(
+                    chan_stats[chan_name],
+                    "signal_std",
+                    np.std(pixels[pixels >= signal_min]),
+                )
                 # get background mean
-                backgr_mean = np.mean(pixels[pixels < signal_min])
-                extend_dict_list(chan_stats[chan_name], "backgr_mean", backgr_mean)
+                extend_dict_list(
+                    chan_stats[chan_name],
+                    "backgr_mean",
+                    np.mean(pixels[pixels < signal_min]),
+                )
                 # get background standard deviation
-                backgr_std = np.std(pixels[pixels < signal_min])
-                extend_dict_list(chan_stats[chan_name], "background_std", backgr_std)
+                extend_dict_list(
+                    chan_stats[chan_name],
+                    "backgr_std",
+                    np.std(pixels[pixels < signal_min]),
+                )
     return chan_stats
 
 
