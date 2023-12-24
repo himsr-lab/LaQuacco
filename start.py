@@ -38,7 +38,16 @@ def get_chans_stats_means(chans_stats, chan, stats):
     chan -- the key determining the channel value
     stats -- the key determining the channel's statistics
     """
-    return [chan_stats[chan][stats] for chan_stats in chans_stats.values()]
+    means = []
+    for chan_stats in chans_stats.values():
+        if chan in chan_stats:
+            means.append(chan_stats[chan][stats])
+        else:  # channel missing in image
+            means.append(None)
+    # convert to Numpy array, keep Python datatype
+    means = np.array(means, dtype="float")
+    means[means == None] = np.nan
+    return means
 
 
 def get_files(path="", pat=None, anti=None, recurse=True):
@@ -166,7 +175,7 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris",
+        path=r"/Users/christianrickert/Desktop/MIBI",
         pat="*.tif",
         anti="",
         # path=r"/Users/christianrickert/Desktop/MIBI",
@@ -174,25 +183,28 @@ if __name__ == "__main__":
         # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 100
+    sampling_perc = 0.5
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
     # analyze the sample
-    channels_stats: Dict[str, Any] = dict()
+    samples_results: Dict[str, Any] = dict()
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
         results = pool.starmap(get_chan_stats, sample_args)
-    channels_stats = {sample: result for sample, result in results}
-
-    # channels_stats = dict(sorted(channels_stats.items()))
-    # for image, channel_stat in channels_stats.items():
+    samples_results = {sample: result for sample, result in results}
+    # for sample, result in samples_results.items():
+    #    print(f"\n{sample}\n{result}")
+    # samples_results = dict(sorted(samples_results.items()))
+    # for image, channel_stat in samples_results.items():
     #    print(f"{image}\n{channel_stat}", end="\n")
     channels = [
-        list(channel_stats.keys()) for channel_stats in channels_stats.values()
+        list(channel_stats.keys()) for channel_stats in samples_results.values()
     ][0]
-    # print(chans)
-    # print(channels_stats[next(iter(channels_stats))][chans[0]])
+
+    for channel in channels:
+        print(repr(channel))
+    # print(samples_results[next(iter(samples_results))][chans[0]])
 
     # channel = "DAPI (DAPI)"
     # channel = "dsDNA (89)"
@@ -206,20 +218,20 @@ if __name__ == "__main__":
 
     for index, channel in enumerate(channels):
         # get statistics summary
-        signal_means = get_chans_stats_means(channels_stats, channel, "signal_mean")
+        signal_means = get_chans_stats_means(samples_results, channel, "signal_mean")
         signal_mean = statistics.mean(signal_means)
-        signal_stds = get_chans_stats_means(channels_stats, channel, "signal_std")
-        signal_errs = get_chans_stats_means(channels_stats, channel, "signal_err")
+        signal_stds = get_chans_stats_means(samples_results, channel, "signal_std")
+        signal_errs = get_chans_stats_means(samples_results, channel, "signal_err")
         signal_std = statistics.mean(signal_stds)
         background_means = get_chans_stats_means(
-            channels_stats, channel, "background_mean"
+            samples_results, channel, "background_mean"
         )
         background_mean = statistics.mean(background_means)
         background_stds = get_chans_stats_means(
-            channels_stats, channel, "background_std"
+            samples_results, channel, "background_std"
         )
         background_errs = get_chans_stats_means(
-            channels_stats, channel, "background_err"
+            samples_results, channel, "background_err"
         )
         background_std = statistics.mean(background_stds)
 
@@ -291,7 +303,9 @@ if __name__ == "__main__":
     sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
     handles, labels, _ = zip(*sorted_legends)
     # draw legend
-    legend = ax.legend(handles, labels, loc="center left", bbox_to_anchor=(1, 0.5))
+    legend = ax.legend(
+        handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+    )
     # adjust drawing area to fit legend
     legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
     legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
