@@ -119,8 +119,7 @@ def get_signal_min(array, lmbda=None):
     )
 
 
-PROCESSES = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
-# PROCESSES = 2
+processes = multiprocessing.cpu_count()  # // 2 or 1  # concurrent workers
 
 # main program
 if __name__ == "__main__":
@@ -129,16 +128,24 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
 
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/MIBI", pat="*.tif", anti=""
+        path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
     )
-    sampling_perc = 1
+    sampling_perc = 20
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
-    channel_stats: Dict[str, Any] = dict()
+    channels_stats: Dict[str, Any] = dict()
     sample_args = [(sample, None) for sample in samples]
-    with multiprocessing.Pool(PROCESSES) as pool:
+    with multiprocessing.Pool(processes) as pool:
         results = pool.starmap(get_chan_stats, sample_args)
-    channel_stats = {sample: result for sample, result in results}
-    # channel_stats = dict(sorted(channel_stats.items()))
-    for image, channel_stat in channel_stats.items():
-        print(f"{image}\n{channel_stat}", end="\n")
+    channels_stats = {sample: result for sample, result in results}
+    # channels_stats = dict(sorted(channels_stats.items()))
+    # for image, channel_stat in channels_stats.items():
+    #    print(f"{image}\n{channel_stat}", end="\n")
+    chans = [list(channel_stats.keys()) for channel_stats in channels_stats.values()][0]
+    print(chans)
+    print(channels_stats[next(iter(channels_stats))][chans[0]])
+#    means = [
+#        channel_stats[chans[-2]]["signal_mean"]
+#        for channel_stats in channels_stats.values()
+#    ]
+#    print(means)
