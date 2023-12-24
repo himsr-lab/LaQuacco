@@ -55,7 +55,8 @@ def get_chan_stats(images):
     chan_stats = dict()
     for image in images:
         name = os.path.basename(image)
-        print(f"\tFILE: {name}", flush=True)
+        extend_dict_list(chan_stats, "images", name)
+        print(f"\tSAMPLE: {name}", flush=True)
         # open TIFF file to extract image information
         with tifffile.TiffFile(image) as tif:
             # use data from first series (of pages) only
@@ -138,19 +139,20 @@ def get_signal_min(array, lmbda=None):
     )
 
 
-files = get_files(path=r"/Users/christianrickert/Desktop/MIBI", pat="*.tif", anti="")
-sampling_perc = 1
+files = get_files(path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti="")
+sampling_perc = 20
 sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
 samples = random.sample(files, sampling_size)
 
 channel_stats: Dict[str, Any] = dict()
 
 channel_stats = get_chan_stats(sorted(samples))
-print(channel_stats)
+# print(channel_stats)
 
 for file in sorted(files):
-    name = os.path.basename(file)
-    # print(f"\n\tFILE: {name}", flush=True)
+    if file not in channel_stats["images"]:
+        name = os.path.basename(file)
+        print(f"\tIMAGE: {name}", flush=True)
 
     # print(f"{channel_name}:\t {get_signal_min(pixels)}")
     # pixels = np.log(pixels[pixels > 0])
