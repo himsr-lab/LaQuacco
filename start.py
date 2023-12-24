@@ -126,13 +126,15 @@ if __name__ == "__main__":
     # safe import of main module avoids spawning multiple processes simultaneously
     if platform.system() == "Windows":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
-
+    # get a list of all image files
     files = get_files(
         path=r"/Users/christianrickert/Desktop/Polaris", pat="*.tif", anti=""
     )
+    # get a subsample of all image files
     sampling_perc = 20
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
+    # analyze subsamples
     channels_stats: Dict[str, Any] = dict()
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
