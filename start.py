@@ -1,3 +1,4 @@
+import datetime
 import fnmatch
 import math
 import multiprocessing
@@ -10,7 +11,6 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
-from typing import Any, Dict
 
 
 # functions
@@ -82,6 +82,7 @@ def get_chan_stats(image, lmbdas=None):
     # open TIFF file to extract image information
     with tifffile.TiffFile(image) as tif:
         # use data from first series (of pages) only
+        date_time = None
         series = tif.series
         pages = series[0].shape[0]
         # access pages of first series
@@ -103,6 +104,12 @@ def get_chan_stats(image, lmbdas=None):
             # prepare channel statistics
             if chan_name not in chan_stats:
                 chan_stats[chan_name] = {}
+            if not date_time:
+                date_time = datetime.datetime.strptime(
+                    page.tags["DateTime"].value, "%Y:%m:%d %H:%M:%S"
+                )
+            # get date and time
+            chan_stats[chan_name]["date_time"] = date_time
             # get minimum signal value (threshold) and boxcox lambda
             if lmbdas and chan < len(lmbdas):
                 signal_min, _ = get_signal_min(pixels, lmbda[chan])
@@ -180,12 +187,11 @@ if __name__ == "__main__":
         anti="",
     )
     # get a sample of the image files
-    sampling_perc = 10
+    sampling_perc = 0.5
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
     # analyze the sample
-    samples_results: Dict[str, Any] = dict()
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
         results = pool.starmap(get_chan_stats, sample_args)
@@ -305,6 +311,17 @@ if __name__ == "__main__":
     # )
     # plt.subplots_adjust(left=0.2)
 
+    # sorted_items = sorted(files_dict.items(), key=lambda x: x[1])
+    # sorted_filenames = [item[0] for item in sorted_items]
+
+    print(samples_results.keys())
+    sorted_samples = dict(
+        sorted(samples_results.items(), key=lambda v: v[1]["dsDNA (89)"]["date_time"])
+    )
+    for sorted_sample in sorted_samples:
+        print(f"{sorted_sample}\n")
+    #    for sample in sorted_samples:
+    #        print(f"{sample} -> {samples_results['dsDNA (89)']['date_time']}")
     bp = ax.violinplot(means, showmeans=False, showmedians=False, showextrema=False)
     bp = ax.boxplot(means, meanline=True, showmeans=True)
     ax.set_xticks(
