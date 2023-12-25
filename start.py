@@ -174,15 +174,13 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris",
+        # path=r"/Users/christianrickert/Desktop/Polaris",
+        path=r"/Users/christianrickert/Desktop/MIBI",
         pat="*.tif",
         anti="",
-        # path=r"/Users/christianrickert/Desktop/MIBI",
-        # pat="*.tif",
-        # anti="",
     )
     # get a sample of the image files
-    sampling_perc = 30
+    sampling_perc = 10
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -307,9 +305,10 @@ if __name__ == "__main__":
     # )
     # plt.subplots_adjust(left=0.2)
 
+    bp = ax.violinplot(means, showmeans=False, showmedians=False, showextrema=False)
     bp = ax.boxplot(means, meanline=True, showmeans=True)
     ax.set_xticks(
-        [y + 1 for y in range(len(channels))],
+        [x for x in range(1, len(channels) + 1)],
         labels=channels,
         rotation=90,
         fontsize="small",
