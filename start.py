@@ -316,7 +316,7 @@ if __name__ == "__main__":
     )
     # plt.yscale("log")
     #    yticks = [0, 0.1]
-    ymax = np.nanmax(means)
+    # ymax = np.nanmax(means)
     #    while max(yticks) < np.max(means):
     #        yticks.append(yticks[-1] * 10.0)
     #    plt.gca().set_yticks(yticks)  # Set the ticks positions
