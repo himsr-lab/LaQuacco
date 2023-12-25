@@ -55,6 +55,25 @@ def get_files(path="", pat=None, anti=None, recurse=True):
     return FILES
 
 
+def get_channel(page):
+    """Get the channel name from a TIFF page.
+
+    Keyword arguments:
+    page -- the TIFF page
+    """
+    try:
+        channel = page.tags["PageName"].value  # regular TIFF
+    except KeyError:
+        img_descr = page.tags["ImageDescription"].value  # OME-TIFF
+        img_dict = xmltodict.parse(img_descr)
+        vendor_id = next(iter(img_dict))  # only key
+        try:
+            channel = img_dict[vendor_id]["Name"]
+        except KeyError:
+            channel = None
+    return channel
+
+
 def get_img_data(image, lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
@@ -70,93 +89,40 @@ def get_img_data(image, lmbdas=None):
         series = tif.series
         pages = series[0].shape[0]
         # access all pages of the first series
-        for chan, page in enumerate(tif.pages[0:pages]):
+        for p, page in enumerate(tif.pages[0:pages]):
             # identify channel by name
-            chan_name = None
-            try:
-                chan_name = page.tags["PageName"].value  # regular TIFF
-            except KeyError:
-                img_descr = page.tags["ImageDescription"].value  # OME-TIFF
-                img_dict = xmltodict.parse(img_descr)
-                vendor_id = next(iter(img_dict))  # first and only key
-                try:
-                    chan_name = img_dict[vendor_id]["Name"]
-                except KeyError:
-                    chan_name = str(chan)
+            chan = get_channel(page)
+            if not chan:
+                chan = str(p)
             # get date and time of acquisition
             if not date_time:
-                date_time = datetime.datetime.strptime(
-                    page.tags["DateTime"].value, "%Y:%m:%d %H:%M:%S"
-                )
-                img_chans_data["metadata"] = {"date_time": date_time}
+                date_time = get_timestamp(page.tags["DateTime"].value)
+                date_time = img_chans_data["metadata"] = {"date_time": date_time}
             # prepare channel statistics
-            if chan_name not in img_chans_data:
-                img_chans_data[chan_name] = {}
+            if chan not in img_chans_data:
+                img_chans_data[chan] = {}
             # get pixel data as flattend Numpy array
-            img_chans_data[chan_name]["pixels"] = page.asarray().flatten()
+            pixls = page.asarray().flatten()
             # get minimum signal value (threshold) and boxcox lambda
             if lmbdas and chan < len(lmbdas):
-                signal_min, _ = get_signal_min(
-                    img_chans_data[chan_name]["pixels"], lmbda[chan]
-                )
+                signmin, _ = get_signal_min(pixls, lmbda[chan])
             else:
-                signal_min, lmbda = get_signal_min(img_chans_data[chan_name]["pixels"])
-            img_chans_data[chan_name]["lmbda"] = lmbda
-            # get signal mean
-            img_chans_data[chan_name]["signal_mean"] = np.mean(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] >= signal_min
-                ]
-            )
-            # get signal standard deviation
-            img_chans_data[chan_name]["signal_std"] = np.std(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] >= signal_min
-                ],
-                ddof=1,
-            )
-            # get standard error of the mean
-            img_chans_data[chan_name]["signal_err"] = get_stderr(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] >= signal_min
-                ]
-            )
-            # get background mean
-            img_chans_data[chan_name]["background_mean"] = np.mean(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] < signal_min
-                ]
-            )
-            # get background standard deviation
-            img_chans_data[chan_name]["background_std"] = np.std(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] < signal_min
-                ],
-                ddof=1,
-            )
-            # get standard error of the mean
-            img_chans_data[chan_name]["background_err"] = get_stderr(
-                img_chans_data[chan_name]["pixels"][
-                    img_chans_data[chan_name]["pixels"] >= signal_min
-                ]
-            )
-        del img_chans_data[chan_name]["pixels"]  # save memory
+                signmin, lmbda = get_signal_min(pixls)
+            img_chans_data[chan]["lmbda"] = lmbda
+            # get basic statistics for signal
+            sign_mean, sign_stdev, sign_stderr = get_stats(pixls[pixls >= signmin])
+            img_chans_data[chan]["sign_mean"] = sign_mean
+            img_chans_data[chan]["sign_stdev"] = sign_stdev
+            img_chans_data[chan]["sign_stderr"] = sign_stderr
+            # get basic statistics for background
+            bckg_mean, bckg_stdev, bckg_stderr = get_stats(pixls[pixls < signmin])
+            img_chans_data[chan]["bckg_mean"] = bckg_mean
+            img_chans_data[chan]["bckg_stdev"] = bckg_stdev
+            img_chans_data[chan]["bckg_stderr"] = bckg_stderr
         return (image, img_chans_data)
 
 
-def get_stderr(array):
-    """Calculates the standard error of the mean.
-
-    Keyword arguments:
-    array -- Numpy array
-    """
-    if array.size:
-        return np.sqrt(np.var(array, ddof=1) / array.size)
-    else:
-        return np.nan
-
-
-def get_colormap_values(count):
+def get_colormap(count):
     """Return a colormap with `counts` number of colors.
 
     Keyword arguments:
@@ -184,6 +150,40 @@ def get_signal_min(array, lmbda=None):
         sig_min if not np.isnan(sig_min) else np.min(array[array > 0]),
         lmbda,
     )
+
+
+def get_stats(array):
+    """Calculates basic statistics for the array.
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    mean = np.mean(array)
+    stdev = np.std(array, ddof=1)  # estimating arithmetic mean
+    stderr = get_stderr(array)
+    return (mean, stdev, stderr)
+
+
+def get_stderr(array):
+    """Calculates the standard error of the mean. We're estimating the
+    arithmetic mean, so we're losing one degree of freedom (n - k).
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    if array.size:
+        return np.sqrt(np.var(array, ddof=1) / array.size)
+    else:
+        return np.nan
+
+
+def get_timestamp(timestamp):
+    """Get a timestamp from a corresponding TIFF tag string.
+
+    Keyword arguments:
+    timestamp  -- the timestamp string
+    """
+    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
 def power_transform(array, lmbda=None):
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         anti="",
     )
     # get a sample of the image files
-    sampling_perc = 0.5
+    sampling_perc = 0.25
     # sampling_perc = 1
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     # print(pool_results[next(iter(pool_results))][chans[0]])
 
     # prepare colormap
-    color_map = get_colormap_values(len(channels))
+    color_map = get_colormap(len(channels))
 
     # create figure and axes
     fig, ax = plt.subplots()
