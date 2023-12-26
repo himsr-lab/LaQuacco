@@ -215,7 +215,10 @@ def power_transform(array, lmbda=None):
     array  -- the untransformed Numpy array
     lambda  -- the transformation parameter
     """
-    array_trans, lmbda, *_ = sp.stats.boxcox(array[array > 0], lmbda=lmbda)
+    try:
+        array_trans, lmbda, *_ = sp.stats.boxcox(array[array > 0], lmbda=lmbda)
+    except ValueError:  # transformation failed
+        array_trans, lmbda = array, None
     return (array_trans, lmbda)
 
 
@@ -368,8 +371,19 @@ if __name__ == "__main__":
         #    print(
         #        f"{sorted_sample} -> {samples_img_data[sorted_sample]['metadata']['date_time']}"
         #    )
-    ax.violinplot(data_means, showmeans=False, showmedians=False, showextrema=True)
-    ax.boxplot(data_norms, meanline=True, showmeans=True)
+    vp = ax.violinplot(
+        data_means, showmeans=False, showmedians=False, showextrema=False
+    )
+    for p in vp["bodies"]:
+        p.set_facecolor("black")
+        p.set_edgecolor("black")
+    bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
+    for p in bp["medians"]:
+        p.set_color("black")
+    for p in bp["means"]:
+        p.set_color("black")
+        p.set_linestyle("dashed")
+
     ax.set_xticks(
         [x for x in range(1, len(chans) + 1)],
         labels=chans,
@@ -383,4 +397,5 @@ if __name__ == "__main__":
     #        yticks.append(yticks[-1] * 10.0)
     #    plt.gca().set_yticks(yticks)  # Set the ticks positions
     #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
+    plt.ylim(bottom=0.0)
     plt.show()
