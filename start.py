@@ -49,43 +49,43 @@ def get_files(path="", pat=None, anti=None, recurse=True):
     return FILES
 
 
-def get_channel(page):
+def get_chan(page):
     """Get the channel name from a TIFF page.
 
     Keyword arguments:
     page -- the TIFF page
     """
     try:
-        channel = page.tags["PageName"].value  # regular TIFF
+        chan = page.tags["PageName"].value  # regular TIFF
     except KeyError:
         img_descr = page.tags["ImageDescription"].value  # OME-TIFF
         img_dict = xmltodict.parse(img_descr)
         vendor_id = next(iter(img_dict))  # only key
         try:
-            channel = img_dict[vendor_id]["Name"]
+            chan = img_dict[vendor_id]["Name"]
         except KeyError:
-            channel = None
-    return channel
+            chan = None
+    return chan
 
 
-def get_chans_data_means(chans_data, chan, data):
-    """Returns the mean channel values from image data dictionaries.
+def get_chan_data(imgs_chans_data, chan, data):
+    """Returns the channel data from image data dictionaries.
 
     Keyword arguments:
-    chans_stats -- dictionaries with image data
+    imgs_chans_data -- dictionaries with image data
     chan -- the key determining the channel value
-    stats -- the key determining the channel's data
+    data -- the key determining the channel data
     """
-    means = []
-    for chans_datum in chans_data:
-        if chan in chans_datum and data in chans_datum[chan]:
-            means.append(chans_datum[chan][data])
+    chan_data = []
+    for _img, chans_data in imgs_chans_data.items():
+        if chan in chans_data and chan not in ["metadata"]:
+            chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
-            means.append(None)
+            chan_data.append(None)
     # convert to Numpy array, keep Python datatype
-    means = np.array(means, dtype="float")
-    means[means == None] = np.nan
-    return means
+    chan_data = np.array(chan_data, dtype="float")
+    chan_data[chans_data == None] = np.nan
+    return chan_data
 
 
 def get_colormap(count):
@@ -98,7 +98,7 @@ def get_colormap(count):
     return [cm.hsv(color_point) for color_point in color_points]
 
 
-def get_img_data(image, norm_lmbdas=None):
+def get_img_data(image, chan_lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
@@ -115,7 +115,7 @@ def get_img_data(image, norm_lmbdas=None):
         # access all pages of the first series
         for p, page in enumerate(tif.pages[0:pages]):
             # identify channel by name
-            chan = get_channel(page)
+            chan = get_chan(page)
             if not chan:
                 chan = str(p)
             # get date and time of acquisition
@@ -128,12 +128,12 @@ def get_img_data(image, norm_lmbdas=None):
             # get pixel data as flattend Numpy array
             pixls = page.asarray().flatten()
             # transform pixel data to be normally distributed
-            if norm_lmbdas and len(norm_lmbdas) > p:
+            if chan_lmbdas and len(chan_lmbdas) > p:
                 lmbda = norm_lmbdas[p]
                 norms, _ = power_transform(pixls, lmbda=lmbda)
             else:  # lambda not yet determined, computationally expensive
                 norms, lmbda = power_transform(pixls)
-                img_chans_data[chan]["sign_lmbda"] = lmbda
+                img_chans_data[chan]["chan_lmbda"] = lmbda
             # identify background as outliers from normally distributed signal
             boxplt_data = calculate_boxplot(norms)
             norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
@@ -168,27 +168,6 @@ def get_samples(population=None, perc=100):
     size = math.ceil(perc / 100 * len(population)) or 1
     samples = random.sample(population, size)
     return samples
-
-
-def get_signal_min(array, lmbda=None):
-    """Return the minimum signal value above background. First, we find the best transformation of
-    all positive array values so that the data will be normally distributed. Second, we calculate
-    the (bottom) box plots statistics for the normally distributed data.
-    In effect, we're defining the bottom outliers of the data distribution as background.
-
-    Keyword arguments:
-    array  -- a Numpy array to be normalized
-    """
-    array_norm, lmbda = power_transform(array, lmbda)
-    lower_fourth = np.percentile(array_norm, 25)  # Q1
-    interquartile_range = sp.stats.iqr(array_norm)  # IQR
-    low_extr = lower_fourth - 1.5 * interquartile_range
-    sig_min = sp.special.inv_boxcox(low_extr, lmbda)
-    np.min(array_norm[array_norm >= sig_min])
-    return (
-        sig_min if not np.isnan(sig_min) else np.min(array[array > 0]),
-        lmbda,
-    )
 
 
 def get_stats(array):
@@ -255,45 +234,53 @@ if __name__ == "__main__":
         anti="",
     )
     # get a sample of the image files
-    samples = get_samples(population=files, perc=0)
+    samples = get_samples(population=files, perc=100)
     # analyze the sample
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
         pool_results = pool.starmap(get_img_data, sample_args)
-    # print(pool_results)
-    pool_results = {sample: img_data for sample, img_data in pool_results}
-    # for sample, result in pool_results.items():
+    # print(samples_img_data)
+    samples_img_data = {sample: img_data for (sample, img_data) in pool_results}
+    # for sample, result in samples_img_data.items():
     #    print(f"\n{sample}\n{result}")
-    # pool_results = dict(sorted(pool_results.items()))
-    # for image, channel_stat in pool_results.items():
-    #    print(f"{image}\n{channel_stat}", end="\n")
-    channels = [list(channel_stats.keys()) for channel_stats in pool_results.values()][
-        0
-    ]
-    # print(pool_results[next(iter(pool_results))][chans[0]])
+    # samples_img_data = dict(sorted(samples_img_data.items()))
+    # for image, chan_stat in samples_img_data.items():
+    #    print(f"{image}\n{chan_stat}", end="\n")
+    chans = set()  # avoid duplicate entries
+    for img_data in samples_img_data.values():
+        for chan in img_data:
+            if chan not in ["metadata"]:
+                chans.add(chan)
+    chans = sorted(list(chans))
+    print(chans)
+
+    chan_lmbdas = []
+    for chan in chans:
+        chan_data = get_chan_data(samples_img_data, chan, "chan_lmbda")
+        chan_mean = np.nanmean(chan_data)
+        chan_lmbdas.append(chan_mean)
+    print(chan_lmbdas)
 
     # prepare colormap
-    color_map = get_colormap(len(channels))
+    color_map = get_colormap(len(chans))
 
     # create figure and axes
     fig, ax = plt.subplots()
     # last_values = []
-    # means = []
-    for c, channel in enumerate(channels):
+    data_means = []
+    data_norms = []
+    for c, chan in enumerate(chans):
         # get statistics summary
-        signal_means = get_chans_data_means(pool_results.values(), channel, "sign_mean")
-"""
-        signal_mean = np.nanmean(signal_means)
-        signal_stds = get_chans_stats_means(pool_results, channel, "sign_stdev")
-        signal_errs = get_chans_stats_means(pool_results, channel, "sign_stderr")
+        signal_data = get_chan_data(samples_img_data, chan, "sign_mean")
+        signal_mean = np.nanmean(signal_data)
+        signal_stds = get_chan_data(samples_img_data, chan, "sign_stdev")
+        signal_errs = get_chan_data(samples_img_data, chan, "sign_stderr")
         signal_std = np.nanmean(signal_stds)
-        background_means = get_chans_stats_means(
-            pool_results, channel, "background_mean"
-        )
-        background_mean = np.nanmean(background_means)
-        background_stds = get_chans_stats_means(pool_results, channel, "bckgr_stdev")
-        background_errs = get_chans_stats_means(pool_results, channel, "bckgr_stderr")
-        background_std = np.nanmean(background_stds)
+        # background_data = get_chan_data(samples_img_data, chan, "bckg_mean")
+        # background_mean = np.nanmean(background_data)
+        # background_stds = get_chan_data(samples_img_data, chan, "bckg_stdev")
+        # background_errs = get_chan_data(samples_img_data, chan, "bckg_stderr")
+        # background_std = np.nanmean(background_stds)
         # def draw_levey_jennings_plot():
         #    pass
 
@@ -315,16 +302,17 @@ if __name__ == "__main__":
         #            y=signal_mean + 2 * signal_std, color=color_map[c], linestyle="dotted"
         #        )
         #
-        # last_values.append(signal_means[-1])
+        # last_values.append(signal_data[-1])
         # ax.errorbar(
-        #    range(len(signal_means)),
-        #    signal_means,
+        #    range(len(signal_data)),
+        #    signal_data,
         #    yerr=signal_errs,
         #    fmt="o-",
         #    color=color_map[c],
-        #    label=channel + " [SIG]",
+        #    label=chan + " [SIG]",
         # )
-        means.append(signal_means)
+        data_means.append(signal_data)
+        data_norms.append(power_transform(np.array(signal_data), lmbda=chan_lmbdas[c]))
 
         # plot statistics summary
         #        if background_mean - 2 * background_std > 0:
@@ -344,47 +332,47 @@ if __name__ == "__main__":
         #        ax.axhline(
         #            y=background_mean + 2 * background_std, color=color_map[c], linestyle="dotted"
         #        )
-        # last_values.append(background_means[-1])
+        # last_values.append(background_data[-1])
         # ax.errorbar(
-        #    range(len(background_means)),
-        #    background_means,
+        #    range(len(background_data)),
+        #    background_data,
         #    yerr=background_errs,
         #    fmt=".--",
         #    color=color_map[c],
-        #    label=channel + " [BGR]",
+        #    label=chan + " [BGR]",
         # )
 
-    # order legend elements by first value plotted
-    # handles, labels = plt.gca().get_legend_handles_labels()
-    # zipped_legends = zip(handles, labels, last_values)
-    # sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
-    # handles, labels, _ = zip(*sorted_legends)
-    # draw legend
-    # legend = ax.legend(
-    #    handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
-    # )
-    # adjust drawing area to fit legend
-    # legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-    # legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
-    # fig.subplots_adjust(
-    #    left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
-    # )
-    # plt.subplots_adjust(left=0.2)
+        # order legend elements by first value plotted
+        # handles, labels = plt.gca().get_legend_handles_labels()
+        # zipped_legends = zip(handles, labels, last_values)
+        # sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
+        # handles, labels, _ = zip(*sorted_legends)
+        # draw legend
+        # legend = ax.legend(
+        #    handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+        # )
+        # adjust drawing area to fit legend
+        # legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        # legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
+        # fig.subplots_adjust(
+        #    left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
+        # )
+        # plt.subplots_adjust(left=0.2)
 
-    # sorted_items = sorted(files_dict.items(), key=lambda x: x[1])
-    # sorted_filenames = [item[0] for item in sorted_items]
-
-    print(pool_results.keys())
-    sorted_samples = dict(sorted(pool_results.items(), key=lambda v: v[1]["date_time"]))
-    for sorted_sample in sorted_samples:
-        print(f"{sorted_sample}\n")
-    #    for sample in sorted_samples:
-    #        print(f"{sample} -> {pool_results['dsDNA (89)']['date_time']}")
-    bp = ax.violinplot(means, showmeans=False, showmedians=False, showextrema=False)
-    bp = ax.boxplot(means, meanline=True, showmeans=True)
+        # sorted_samples = dict(
+        #    sorted(
+        #        samples_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"]
+        #    )
+        # )
+        # for sorted_sample in sorted_samples:
+        #    print(
+        #        f"{sorted_sample} -> {samples_img_data[sorted_sample]['metadata']['date_time']}"
+        #    )
+    ax.violinplot(data_means, showmeans=False, showmedians=False, showextrema=True)
+    ax.boxplot(data_norms, meanline=True, showmeans=True)
     ax.set_xticks(
-        [x for x in range(1, len(channels) + 1)],
-        labels=channels,
+        [x for x in range(1, len(chans) + 1)],
+        labels=chans,
         rotation=90,
         fontsize="small",
     )
@@ -396,4 +384,3 @@ if __name__ == "__main__":
     #    plt.gca().set_yticks(yticks)  # Set the ticks positions
     #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
     plt.show()
-"""
