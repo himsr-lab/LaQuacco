@@ -88,6 +88,16 @@ def get_chans_stats_means(chans_stats, chan, stats):
     return means
 
 
+def get_colormap(count):
+    """Return a colormap with `counts` number of colors.
+
+    Keyword arguments:
+    count  -- number of colors to be generated
+    """
+    color_points = np.linspace(0, 1, count)
+    return [cm.hsv(color_point) for color_point in color_points]
+
+
 def get_img_data(image, norm_lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
@@ -148,14 +158,16 @@ def get_img_data(image, norm_lmbdas=None):
         return (image, img_chans_data)
 
 
-def get_colormap(count):
-    """Return a colormap with `counts` number of colors.
+def get_samples(population=None, perc=100):
+    """From a list of elements, get a fractional subset of the data.
 
     Keyword arguments:
-    count  -- number of colors to be generated
+    population -- the list to take the samples from
+    perc -- the percentage the subset represents
     """
-    color_points = np.linspace(0, 1, count)
-    return [cm.hsv(color_point) for color_point in color_points]
+    size = math.ceil(perc / 100 * len(population)) or 1
+    samples = random.sample(population, size)
+    return samples
 
 
 def get_signal_min(array, lmbda=None):
@@ -243,10 +255,7 @@ if __name__ == "__main__":
         anti="",
     )
     # get a sample of the image files
-    # sampling_perc = 0.25
-    sampling_perc = 0
-    sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
-    samples = random.sample(files, sampling_size)
+    samples = get_samples(population=files, perc=0)
     # analyze the sample
     sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
