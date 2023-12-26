@@ -229,7 +229,7 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-processes = 1  # multiprocessing.cpu_count() // 2 or 1  # concurrent workers
+processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
 
 # main program
 if __name__ == "__main__":
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     )
     # sample experimental image data
     try:
-        samples = get_samples(population=files, perc=0)
+        samples = get_samples(population=files, perc=10)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -261,6 +261,7 @@ if __name__ == "__main__":
         for chan in img_data:
             if chan not in ["metadata"]:
                 chans.add(chan)
+    chans = sorted(chans)
     print(chans)
 
     # prepare lambdas for power transform
@@ -288,10 +289,10 @@ if __name__ == "__main__":
     for c, chan in enumerate(chans):
         # get statistics summary
         signal_data = get_chan_data(images_img_data, chan, "sign_mean")
-        signal_mean = np.nanmean(signal_data)
-        signal_stds = get_chan_data(images_img_data, chan, "sign_stdev")
-        signal_errs = get_chan_data(images_img_data, chan, "sign_stderr")
-        signal_std = np.nanmean(signal_stds)
+        # signal_mean = np.nanmean(signal_data)
+        # signal_stds = get_chan_data(images_img_data, chan, "sign_stdev")
+        # signal_errs = get_chan_data(images_img_data, chan, "sign_stderr")
+        # signal_std = np.nanmean(signal_stds)
         # background_data = get_chan_data(images_img_data, chan, "bckg_mean")
         # background_mean = np.nanmean(background_data)
         # background_stds = get_chan_data(images_img_data, chan, "bckg_stdev")
@@ -329,7 +330,7 @@ if __name__ == "__main__":
         # )
         data_means.append(signal_data)
         data_norms.append(
-            boxcox_transform(np.array(signal_data), lmbda=chan_lmbdas[chan])
+            boxcox_transform(np.array(signal_data), lmbda=chan_lmbdas[chan])[0]
         )
 
         # plot statistics summary
@@ -389,16 +390,15 @@ if __name__ == "__main__":
     vp = ax.violinplot(
         data_means, showmeans=False, showmedians=False, showextrema=False
     )
-    for p in vp["bodies"]:
-        p.set_facecolor("black")
-        p.set_edgecolor("black")
-        bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
-        for p in bp["medians"]:
-            p.set_color("black")
-        for p in bp["means"]:
-            p.set_color("black")
-            p.set_linestyle("dashed")
-
+    for v in vp["bodies"]:
+        v.set_facecolor("black")
+        v.set_edgecolor("black")
+    bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
+    for b in bp["medians"]:
+        b.set_color("black")
+    for b in bp["means"]:
+        b.set_color("black")
+        b.set_linestyle("dashed")
     ax.set_xticks(
         [x for x in range(1, len(chans) + 1)],
         labels=chans,
