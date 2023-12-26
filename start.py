@@ -68,18 +68,18 @@ def get_channel(page):
     return channel
 
 
-def get_chans_stats_means(chans_stats, chan, stats):
-    """Returns the mean values from a list of channel data dictionaries.
+def get_chans_data_means(chans_data, chan, data):
+    """Returns the mean channel values from image data dictionaries.
 
     Keyword arguments:
-    chans_stats -- a list of channel statistics dictionaries
+    chans_stats -- dictionaries with image data
     chan -- the key determining the channel value
-    stats -- the key determining the channel's statistics
+    stats -- the key determining the channel's data
     """
     means = []
-    for img_chans_data in chans_stats.values():
-        if isinstance(img_chans_data, dict) and chan in img_chans_data:
-            means.append(img_chans_data[chan][stats])
+    for chans_datum in chans_data:
+        if chan in chans_datum and data in chans_datum[chan]:
+            means.append(chans_datum[chan][data])
         else:  # channel missing in image
             means.append(None)
     # convert to Numpy array, keep Python datatype
@@ -261,7 +261,7 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes) as pool:
         pool_results = pool.starmap(get_img_data, sample_args)
     # print(pool_results)
-    pool_results = {sample: result for sample, result in pool_results}
+    pool_results = {sample: img_data for sample, img_data in pool_results}
     # for sample, result in pool_results.items():
     #    print(f"\n{sample}\n{result}")
     # pool_results = dict(sorted(pool_results.items()))
@@ -270,7 +270,6 @@ if __name__ == "__main__":
     channels = [list(channel_stats.keys()) for channel_stats in pool_results.values()][
         0
     ]
-
     # print(pool_results[next(iter(pool_results))][chans[0]])
 
     # prepare colormap
@@ -279,42 +278,41 @@ if __name__ == "__main__":
     # create figure and axes
     fig, ax = plt.subplots()
     # last_values = []
-    means = []
-"""
-    for index, channel in enumerate(channels):
+    # means = []
+    for c, channel in enumerate(channels):
         # get statistics summary
-        signal_means = get_chans_stats_means(pool_results, channel, "signal_mean")
+        signal_means = get_chans_data_means(pool_results.values(), channel, "sign_mean")
+"""
         signal_mean = np.nanmean(signal_means)
-        signal_stds = get_chans_stats_means(pool_results, channel, "signal_std")
-        signal_errs = get_chans_stats_means(pool_results, channel, "signal_err")
+        signal_stds = get_chans_stats_means(pool_results, channel, "sign_stdev")
+        signal_errs = get_chans_stats_means(pool_results, channel, "sign_stderr")
         signal_std = np.nanmean(signal_stds)
         background_means = get_chans_stats_means(
             pool_results, channel, "background_mean"
         )
         background_mean = np.nanmean(background_means)
-        background_stds = get_chans_stats_means(pool_results, channel, "background_std")
-        background_errs = get_chans_stats_means(pool_results, channel, "background_err")
+        background_stds = get_chans_stats_means(pool_results, channel, "bckgr_stdev")
+        background_errs = get_chans_stats_means(pool_results, channel, "bckgr_stderr")
         background_std = np.nanmean(background_stds)
-
         # def draw_levey_jennings_plot():
         #    pass
 
         #        if signal_mean - 2 * signal_std > 0:
         #            ax.axhline(
         #                y=signal_mean - 2 * signal_std,
-        #                color=color_map[index],
+        #                color=color_map[c],
         #                linestyle="dotted",
         #            )
         #        if signal_mean - signal_std > 0:
         #            ax.axhline(
-        #                y=signal_mean - signal_std, color=color_map[index], linestyle="dashed"
+        #                y=signal_mean - signal_std, color=color_map[c], linestyle="dashed"
         #            )
-        #        ax.axhline(y=signal_mean, color=color_map[index], linestyle="dashdot")
+        #        ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
         #        ax.axhline(
-        #            y=signal_mean + signal_std, color=color_map[index], linestyle="dashed"
+        #            y=signal_mean + signal_std, color=color_map[c], linestyle="dashed"
         #        )
         #        ax.axhline(
-        #            y=signal_mean + 2 * signal_std, color=color_map[index], linestyle="dotted"
+        #            y=signal_mean + 2 * signal_std, color=color_map[c], linestyle="dotted"
         #        )
         #
         # last_values.append(signal_means[-1])
@@ -323,7 +321,7 @@ if __name__ == "__main__":
         #    signal_means,
         #    yerr=signal_errs,
         #    fmt="o-",
-        #    color=color_map[index],
+        #    color=color_map[c],
         #    label=channel + " [SIG]",
         # )
         means.append(signal_means)
@@ -332,19 +330,19 @@ if __name__ == "__main__":
         #        if background_mean - 2 * background_std > 0:
         #            ax.axhline(
         #                y=background_mean - 2 * background_std,
-        #                color=color_map[index],
+        #                color=color_map[c],
         #                linestyle="dotted",
         #            )
         #        if background_mean - background_std > 0:
         #            ax.axhline(
-        #                y=background_mean - background_std, color=color_map[index], linestyle="dashed"
+        #                y=background_mean - background_std, color=color_map[c], linestyle="dashed"
         #            )
-        #        ax.axhline(y=background_mean, color=color_map[index], linestyle="dashdot")
+        #        ax.axhline(y=background_mean, color=color_map[c], linestyle="dashdot")
         #        ax.axhline(
-        #            y=background_mean + background_std, color=color_map[index], linestyle="dashed"
+        #            y=background_mean + background_std, color=color_map[c], linestyle="dashed"
         #        )
         #        ax.axhline(
-        #            y=background_mean + 2 * background_std, color=color_map[index], linestyle="dotted"
+        #            y=background_mean + 2 * background_std, color=color_map[c], linestyle="dotted"
         #        )
         # last_values.append(background_means[-1])
         # ax.errorbar(
@@ -352,7 +350,7 @@ if __name__ == "__main__":
         #    background_means,
         #    yerr=background_errs,
         #    fmt=".--",
-        #    color=color_map[index],
+        #    color=color_map[c],
         #    label=channel + " [BGR]",
         # )
 
