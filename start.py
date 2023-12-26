@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import platform
 import random
+import sys
 import tifffile
 import xmltodict
 import matplotlib.cm as cm
@@ -14,6 +15,24 @@ import scipy as sp
 
 
 # functions
+def boxcox_transform(array, lmbda=None):
+    """Power-transforms a Numpy array with the `numpy.stats.boxcox` function.
+    If the value of `lambda` is not given (None), the fuction will determine
+    its optimal value that maximizes the log-likelihood function.
+    The data needs to be positive (above zero).
+
+    Keyword arguments:
+    array  -- the untransformed Numpy array
+    lambda  -- the transformation parameter
+    """
+    if lmbda:
+        boxcox = sp.stats.boxcox(array[array > 0], lmbda=lmbda, alpha=None)
+        maxlog = None
+    else:
+        boxcox, maxlog = sp.stats.boxcox(array[array > 0], lmbda=lmbda, alpha=None)
+    return (boxcox, maxlog)
+
+
 def calculate_boxplot(array):
     """Calculate the data for a Matplolib boxplot and
     immediately close the corresponding plot window:
@@ -28,7 +47,7 @@ def calculate_boxplot(array):
     return boxplt
 
 
-def get_files(path="", pat=None, anti=None, recurse=True):
+def get_files(path="", pat=None, anti=None, recurse=False):
     """Iterate through all files in a folder structure and
     return a list of matching files.
 
@@ -106,7 +125,10 @@ def get_img_data(image, chan_lmbdas=None):
     """
     img_chans_data = dict()
     img_name = os.path.basename(image)
-    print(f"\tSAMPLE: {img_name}", flush=True)
+    if chan_lmbdas:
+        print(f"\tIMAGE: {img_name}", flush=True)
+    else:
+        print(f"\tSAMPLE: {img_name}", flush=True)
     # open TIFF file to extract image information
     with tifffile.TiffFile(image) as tif:
         date_time = None
@@ -118,43 +140,45 @@ def get_img_data(image, chan_lmbdas=None):
             chan = get_chan(page)
             if not chan:
                 chan = str(p)
-            # get date and time of acquisition
-            if not date_time:
-                date_time = get_timestamp(page.tags["DateTime"].value)
-                date_time = img_chans_data["metadata"] = {"date_time": date_time}
             # prepare channel statistics
             if chan not in img_chans_data:
                 img_chans_data[chan] = {}
             # get pixel data as flattend Numpy array
             pixls = page.asarray().flatten()
-            # transform pixel data to be normally distributed
+            # power-transform data and get image statistics
             if chan_lmbdas and len(chan_lmbdas) > p:
-                lmbda = norm_lmbdas[p]
-                norms, _ = power_transform(pixls, lmbda=lmbda)
-            else:  # lambda not yet determined, computationally expensive
-                norms, lmbda = power_transform(pixls)
-                img_chans_data[chan]["chan_lmbda"] = lmbda
-            # identify background as outliers from normally distributed signal
-            boxplt_data = calculate_boxplot(norms)
-            norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
-            pixls_sign_min = sp.special.inv_boxcox(norms_sign_min, lmbda)
-            img_chans_data[chan]["sign_min"] = pixls_sign_min
-            # get basic statistics for signal
-            sign_mean, sign_stdev, sign_stderr, sign_boxplt = get_stats(
-                pixls[pixls >= pixls_sign_min]
-            )
-            img_chans_data[chan]["sign_mean"] = sign_mean
-            img_chans_data[chan]["sign_stdev"] = sign_stdev
-            img_chans_data[chan]["sign_stderr"] = sign_stderr
-            img_chans_data[chan]["sign_bxplt"] = sign_boxplt
-            # get basic statistics for background
-            bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
-                pixls[pixls < pixls_sign_min]
-            )
-            img_chans_data[chan]["bckg_mean"] = bckg_mean
-            img_chans_data[chan]["bckg_stdev"] = bckg_stdev
-            img_chans_data[chan]["bckg_stderr"] = bckg_stderr
-            img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
+                # get date and time of acquisition
+                if not date_time:
+                    date_time = get_timestamp(page.tags["DateTime"].value)
+                    date_time = img_chans_data["metadata"] = {"date_time": date_time}
+                # transform pixel data to be normally distributed
+                norms, _ = boxcox_transform(pixls, lmbda=chan_lmbdas[chan])
+                # identify background as outliers from normally distributed signal
+                boxplt_data = calculate_boxplot(norms)
+                norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
+                pixls_sign_min = sp.special.inv_boxcox(
+                    norms_sign_min, chan_lmbdas[chan]
+                )
+                img_chans_data[chan]["sign_min"] = pixls_sign_min
+                # get basic statistics for signal
+                sign_mean, sign_stdev, sign_stderr, sign_boxplt = get_stats(
+                    pixls[pixls >= pixls_sign_min]
+                )
+                img_chans_data[chan]["sign_mean"] = sign_mean
+                img_chans_data[chan]["sign_stdev"] = sign_stdev
+                img_chans_data[chan]["sign_stderr"] = sign_stderr
+                img_chans_data[chan]["sign_bxplt"] = sign_boxplt
+                # get basic statistics for background
+                bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
+                    pixls[pixls < pixls_sign_min]
+                )
+                img_chans_data[chan]["bckg_mean"] = bckg_mean
+                img_chans_data[chan]["bckg_stdev"] = bckg_stdev
+                img_chans_data[chan]["bckg_stderr"] = bckg_stderr
+                img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
+            else:  # lambda not yet determined
+                norms, chan_lmbda = boxcox_transform(pixls)
+                img_chans_data[chan]["chan_lmbda"] = chan_lmbda
         return (image, img_chans_data)
 
 
@@ -205,24 +229,7 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def power_transform(array, lmbda=None):
-    """Power-transforms a Numpy array with the `numpy.stats.boxcox` function.
-    If the value of `lambda` is not given (None), the fuction will run an
-    optimization routine to find the optimal value.
-    The data needs to be positive (above zero) before the transformation.
-
-    Keyword arguments:
-    array  -- the untransformed Numpy array
-    lambda  -- the transformation parameter
-    """
-    try:
-        array_trans, lmbda, *_ = sp.stats.boxcox(array[array > 0], lmbda=lmbda)
-    except ValueError:  # transformation failed
-        array_trans, lmbda = array, None
-    return (array_trans, lmbda)
-
-
-processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
+processes = 1  # multiprocessing.cpu_count() // 2 or 1  # concurrent workers
 
 # main program
 if __name__ == "__main__":
@@ -231,38 +238,44 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris",
-        # path=r"/Users/christianrickert/Desktop/MIBI",
-        pat="*.tif",
+        # path=r"/Users/christianrickert/Desktop/Polaris",
+        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+        pat="*.tif?",
         anti="",
     )
-    # get a sample of the image files
-    samples = get_samples(population=files, perc=100)
+    # sample experimental image data
+    try:
+        samples = get_samples(population=files, perc=0)
+        sample_args = [(sample, None) for sample in samples]
+    except ValueError:
+        print("Could not draw samples from experimental population.")
+        sys.exit(1)
     # analyze the sample
-    sample_args = [(sample, None) for sample in samples]
     with multiprocessing.Pool(processes) as pool:
-        pool_results = pool.starmap(get_img_data, sample_args)
+        sample_results = pool.starmap(get_img_data, sample_args)
     # print(samples_img_data)
-    samples_img_data = {sample: img_data for (sample, img_data) in pool_results}
-    # for sample, result in samples_img_data.items():
-    #    print(f"\n{sample}\n{result}")
-    # samples_img_data = dict(sorted(samples_img_data.items()))
-    # for image, chan_stat in samples_img_data.items():
-    #    print(f"{image}\n{chan_stat}", end="\n")
+    samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
+
     chans = set()  # avoid duplicate entries
     for img_data in samples_img_data.values():
         for chan in img_data:
             if chan not in ["metadata"]:
                 chans.add(chan)
-    chans = sorted(list(chans))
     print(chans)
 
-    chan_lmbdas = []
+    # prepare lambdas for power transform
+    chan_lmbdas = {}
     for chan in chans:
         chan_data = get_chan_data(samples_img_data, chan, "chan_lmbda")
         chan_mean = np.nanmean(chan_data)
-        chan_lmbdas.append(chan_mean)
+        chan_lmbdas[chan] = chan_mean
     print(chan_lmbdas)
+
+    # analyze experimental image data
+    image_args = [(image, chan_lmbdas) for image in files]
+    with multiprocessing.Pool(processes) as pool:
+        image_results = pool.starmap(get_img_data, image_args)
+    images_img_data = {image: img_data for (image, img_data) in image_results}
 
     # prepare colormap
     color_map = get_colormap(len(chans))
@@ -274,15 +287,15 @@ if __name__ == "__main__":
     data_norms = []
     for c, chan in enumerate(chans):
         # get statistics summary
-        signal_data = get_chan_data(samples_img_data, chan, "sign_mean")
+        signal_data = get_chan_data(images_img_data, chan, "sign_mean")
         signal_mean = np.nanmean(signal_data)
-        signal_stds = get_chan_data(samples_img_data, chan, "sign_stdev")
-        signal_errs = get_chan_data(samples_img_data, chan, "sign_stderr")
+        signal_stds = get_chan_data(images_img_data, chan, "sign_stdev")
+        signal_errs = get_chan_data(images_img_data, chan, "sign_stderr")
         signal_std = np.nanmean(signal_stds)
-        # background_data = get_chan_data(samples_img_data, chan, "bckg_mean")
+        # background_data = get_chan_data(images_img_data, chan, "bckg_mean")
         # background_mean = np.nanmean(background_data)
-        # background_stds = get_chan_data(samples_img_data, chan, "bckg_stdev")
-        # background_errs = get_chan_data(samples_img_data, chan, "bckg_stderr")
+        # background_stds = get_chan_data(images_img_data, chan, "bckg_stdev")
+        # background_errs = get_chan_data(images_img_data, chan, "bckg_stderr")
         # background_std = np.nanmean(background_stds)
         # def draw_levey_jennings_plot():
         #    pass
@@ -315,7 +328,9 @@ if __name__ == "__main__":
         #    label=chan + " [SIG]",
         # )
         data_means.append(signal_data)
-        data_norms.append(power_transform(np.array(signal_data), lmbda=chan_lmbdas[c]))
+        data_norms.append(
+            boxcox_transform(np.array(signal_data), lmbda=chan_lmbdas[chan])
+        )
 
         # plot statistics summary
         #        if background_mean - 2 * background_std > 0:
@@ -364,12 +379,12 @@ if __name__ == "__main__":
 
         # sorted_samples = dict(
         #    sorted(
-        #        samples_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"]
+        #        images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"]
         #    )
         # )
         # for sorted_sample in sorted_samples:
         #    print(
-        #        f"{sorted_sample} -> {samples_img_data[sorted_sample]['metadata']['date_time']}"
+        #        f"{sorted_sample} -> {images_img_data[sorted_sample]['metadata']['date_time']}"
         #    )
     vp = ax.violinplot(
         data_means, showmeans=False, showmedians=False, showextrema=False
@@ -377,12 +392,12 @@ if __name__ == "__main__":
     for p in vp["bodies"]:
         p.set_facecolor("black")
         p.set_edgecolor("black")
-    bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
-    for p in bp["medians"]:
-        p.set_color("black")
-    for p in bp["means"]:
-        p.set_color("black")
-        p.set_linestyle("dashed")
+        bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
+        for p in bp["medians"]:
+            p.set_color("black")
+        for p in bp["means"]:
+            p.set_color("black")
+            p.set_linestyle("dashed")
 
     ax.set_xticks(
         [x for x in range(1, len(chans) + 1)],
