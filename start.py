@@ -14,24 +14,18 @@ import scipy as sp
 
 
 # functions
-def get_chans_stats_means(chans_stats, chan, stats):
-    """Returns the mean values from a list of channel data dictionaries.
+def calculate_boxplot(array):
+    """Calculate the data for a Matplolib boxplot and
+    immediately close the corresponding plot window:
+    Accessing the data of the boxplot within a
+    processing pool can crash Python.
 
     Keyword arguments:
-    chans_stats -- a list of channel statistics dictionaries
-    chan -- the key determining the channel value
-    stats -- the key determining the channel's statistics
+    array  -- a Numpy array to be analyzed
     """
-    means = []
-    for img_chans_data in chans_stats.values():
-        if isinstance(img_chans_data, dict) and chan in img_chans_data:
-            means.append(img_chans_data[chan][stats])
-        else:  # channel missing in image
-            means.append(None)
-    # convert to Numpy array, keep Python datatype
-    means = np.array(means, dtype="float")
-    means[means == None] = np.nan
-    return means
+    boxplt = plt.boxplot(array)
+    plt.close()
+    return boxplt
 
 
 def get_files(path="", pat=None, anti=None, recurse=True):
@@ -74,6 +68,26 @@ def get_channel(page):
     return channel
 
 
+def get_chans_stats_means(chans_stats, chan, stats):
+    """Returns the mean values from a list of channel data dictionaries.
+
+    Keyword arguments:
+    chans_stats -- a list of channel statistics dictionaries
+    chan -- the key determining the channel value
+    stats -- the key determining the channel's statistics
+    """
+    means = []
+    for img_chans_data in chans_stats.values():
+        if isinstance(img_chans_data, dict) and chan in img_chans_data:
+            means.append(img_chans_data[chan][stats])
+        else:  # channel missing in image
+            means.append(None)
+    # convert to Numpy array, keep Python datatype
+    means = np.array(means, dtype="float")
+    means[means == None] = np.nan
+    return means
+
+
 def get_img_data(image, norm_lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
@@ -111,7 +125,7 @@ def get_img_data(image, norm_lmbdas=None):
                 norms, lmbda = power_transform(pixls)
                 img_chans_data[chan]["sign_lmbda"] = lmbda
             # identify background as outliers from normally distributed signal
-            boxplt_data = plt.boxplot(norms)
+            boxplt_data = calculate_boxplot(norms)
             norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
             pixls_sign_min = sp.special.inv_boxcox(norms_sign_min, lmbda)
             img_chans_data[chan]["sign_min"] = pixls_sign_min
@@ -122,7 +136,7 @@ def get_img_data(image, norm_lmbdas=None):
             img_chans_data[chan]["sign_mean"] = sign_mean
             img_chans_data[chan]["sign_stdev"] = sign_stdev
             img_chans_data[chan]["sign_stderr"] = sign_stderr
-            # img_chans_data[chan]["sign_bxplt"] = sign_boxplt
+            img_chans_data[chan]["sign_bxplt"] = sign_boxplt
             # get basic statistics for background
             bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
                 pixls[pixls < pixls_sign_min]
@@ -130,7 +144,7 @@ def get_img_data(image, norm_lmbdas=None):
             img_chans_data[chan]["bckg_mean"] = bckg_mean
             img_chans_data[chan]["bckg_stdev"] = bckg_stdev
             img_chans_data[chan]["bckg_stderr"] = bckg_stderr
-            # img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
+            img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
         return (image, img_chans_data)
 
 
@@ -174,7 +188,7 @@ def get_stats(array):
     mean = np.mean(array)
     stdev = np.std(array, ddof=1)  # estimating arithmetic mean
     stderr = get_stderr(array)
-    boxplt = plt.boxplot(array)
+    boxplt = calculate_boxplot(array)
     return (mean, stdev, stderr, boxplt)
 
 
