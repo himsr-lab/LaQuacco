@@ -74,7 +74,7 @@ def get_channel(page):
     return channel
 
 
-def get_img_data(image, lmbdas=None):
+def get_img_data(image, norm_lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
@@ -103,22 +103,34 @@ def get_img_data(image, lmbdas=None):
                 img_chans_data[chan] = {}
             # get pixel data as flattend Numpy array
             pixls = page.asarray().flatten()
-            # get minimum signal value (threshold) and boxcox lambda
-            if lmbdas and chan < len(lmbdas):
-                signmin, _ = get_signal_min(pixls, lmbda[chan])
-            else:
-                signmin, lmbda = get_signal_min(pixls)
-            img_chans_data[chan]["lmbda"] = lmbda
+            # transform pixel data to be normally distributed
+            if norm_lmbdas and len(norm_lmbdas) > p:
+                lmbda = norm_lmbdas[p]
+                norms, _ = power_transform(pixls, lmbda=lmbda)
+            else:  # lambda not yet determined, computationally expensive
+                norms, lmbda = power_transform(pixls)
+                img_chans_data[chan]["sign_lmbda"] = lmbda
+            # identify background as outliers from normally distributed signal
+            boxplt_data = plt.boxplot(norms)
+            norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
+            pixls_sign_min = sp.special.inv_boxcox(norms_sign_min, lmbda)
+            img_chans_data[chan]["sign_min"] = pixls_sign_min
             # get basic statistics for signal
-            sign_mean, sign_stdev, sign_stderr = get_stats(pixls[pixls >= signmin])
+            sign_mean, sign_stdev, sign_stderr, sign_boxplt = get_stats(
+                pixls[pixls >= pixls_sign_min]
+            )
             img_chans_data[chan]["sign_mean"] = sign_mean
             img_chans_data[chan]["sign_stdev"] = sign_stdev
             img_chans_data[chan]["sign_stderr"] = sign_stderr
+            # img_chans_data[chan]["sign_bxplt"] = sign_boxplt
             # get basic statistics for background
-            bckg_mean, bckg_stdev, bckg_stderr = get_stats(pixls[pixls < signmin])
+            bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
+                pixls[pixls < pixls_sign_min]
+            )
             img_chans_data[chan]["bckg_mean"] = bckg_mean
             img_chans_data[chan]["bckg_stdev"] = bckg_stdev
             img_chans_data[chan]["bckg_stderr"] = bckg_stderr
+            # img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
         return (image, img_chans_data)
 
 
@@ -146,6 +158,7 @@ def get_signal_min(array, lmbda=None):
     interquartile_range = sp.stats.iqr(array_norm)  # IQR
     low_extr = lower_fourth - 1.5 * interquartile_range
     sig_min = sp.special.inv_boxcox(low_extr, lmbda)
+    np.min(array_norm[array_norm >= sig_min])
     return (
         sig_min if not np.isnan(sig_min) else np.min(array[array > 0]),
         lmbda,
@@ -161,7 +174,8 @@ def get_stats(array):
     mean = np.mean(array)
     stdev = np.std(array, ddof=1)  # estimating arithmetic mean
     stderr = get_stderr(array)
-    return (mean, stdev, stderr)
+    boxplt = plt.boxplot(array)
+    return (mean, stdev, stderr, boxplt)
 
 
 def get_stderr(array):
@@ -209,14 +223,14 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        # path=r"/Users/christianrickert/Desktop/Polaris",
-        path=r"/Users/christianrickert/Desktop/MIBI",
+        path=r"/Users/christianrickert/Desktop/Polaris",
+        # path=r"/Users/christianrickert/Desktop/MIBI",
         pat="*.tif",
         anti="",
     )
     # get a sample of the image files
-    sampling_perc = 0.25
-    # sampling_perc = 1
+    # sampling_perc = 0.25
+    sampling_perc = 0
     sampling_size = math.ceil(sampling_perc / 100 * len(files)) or 1
     samples = random.sample(files, sampling_size)
     # analyze the sample
