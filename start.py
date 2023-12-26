@@ -146,7 +146,10 @@ def get_img_data(image, chan_lmbdas=None):
             # get pixel data as flattend Numpy array
             pixls = page.asarray().flatten()
             # power-transform data and get image statistics
-            if chan_lmbdas and len(chan_lmbdas) > p:
+            if chan_lmbdas:
+                assert (
+                    len(chan_lmbdas) == pages
+                ), "Number of lambdas and channels doesn't match."
                 # get date and time of acquisition
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
@@ -238,9 +241,9 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        # path=r"/Users/christianrickert/Desktop/Polaris",
-        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*.tif?",
+        path=r"/Users/christianrickert/Desktop/Polaris",
+        # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+        pat="*.tif",
         anti="",
     )
     # sample experimental image data
@@ -262,7 +265,10 @@ if __name__ == "__main__":
             if chan not in ["metadata"]:
                 chans.add(chan)
     chans = sorted(chans)
-    print(chans)
+    # print(chans)
+
+    # prepare colormap
+    color_map = get_colormap(len(chans))
 
     # prepare lambdas for power transform
     chan_lmbdas = {}
@@ -270,7 +276,7 @@ if __name__ == "__main__":
         chan_data = get_chan_data(samples_img_data, chan, "chan_lmbda")
         chan_mean = np.nanmean(chan_data)
         chan_lmbdas[chan] = chan_mean
-    print(chan_lmbdas)
+    # print(chan_lmbdas)
 
     # analyze experimental image data
     image_args = [(image, chan_lmbdas) for image in files]
@@ -278,14 +284,86 @@ if __name__ == "__main__":
         image_results = pool.starmap(get_img_data, image_args)
     images_img_data = {image: img_data for (image, img_data) in image_results}
 
-    # prepare colormap
-    color_map = get_colormap(len(chans))
+    # sort experimental image data by time stamp
+    images_img_data = dict(
+        sorted(images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"])
+    )
 
     # create figure and axes
     fig, ax = plt.subplots()
-    # last_values = []
+
+    """
+    # distribution chart
     data_means = []
     data_norms = []
+    for c, chan in enumerate(chans):
+        # get statistics summary
+        signal_means = get_chan_data(images_img_data, chan, "sign_mean")
+        data_means.append(signal_means)
+        data_norms.append(
+            boxcox_transform(np.array(signal_means), lmbda=chan_lmbdas[chan])[0]
+        )
+    vp = ax.violinplot(
+        data_means, showmeans=False, showmedians=False, showextrema=False
+    )
+    for v in vp["bodies"]:
+        v.set_facecolor("black")
+        v.set_edgecolor("black")
+    bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
+    for b in bp["medians"]:
+        b.set_color("black")
+    for b in bp["means"]:
+        b.set_color("black")
+        b.set_linestyle("dashed")
+    ax.set_xticks(
+        [x for x in range(1, len(chans) + 1)],
+        labels=chans,
+        rotation=90,
+        fontsize="small",
+    )
+    plt.ylim(bottom=0.0)
+    plt.show()
+    """
+
+    # Levey-Jennings chart
+    data_lasts = []
+    signal_labels = [os.path.basename(file) for file in files]
+    for c, chan in enumerate(chans):
+        # get image statistics
+        signal_means = get_chan_data(images_img_data, chan, "sign_mean")
+        data_lasts.append(signal_means[-1])
+        signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
+        ax.errorbar(
+            signal_labels,
+            signal_means,
+            yerr=signal_stderrs,
+            fmt="o-",
+            color=color_map[c],
+            label=chan + " [SIG]",
+        )
+    # order legend elements
+    handles, labels = plt.gca().get_legend_handles_labels()
+    zipped_legends = zip(handles, labels, data_lasts)
+    sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
+    handles, labels, _ = zip(*sorted_legends)
+    legend = ax.legend(
+        handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+    )
+    plt.xticks(rotation=90, fontsize="small")
+    plt.ylim(bottom=0.0)
+    plt.show()
+
+    """
+    # plt.yscale("log")
+    #    yticks = [0, 0.1]
+    # ymax = np.nanmax(means)
+    #    while max(yticks) < np.max(means):
+    #        yticks.append(yticks[-1] * 10.0)
+    #    plt.gca().set_yticks(yticks)  # Set the ticks positions
+    #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
+    plt.ylim(bottom=0.0)
+    plt.show()
+
     for c, chan in enumerate(chans):
         # get statistics summary
         signal_data = get_chan_data(images_img_data, chan, "sign_mean")
@@ -298,26 +376,24 @@ if __name__ == "__main__":
         # background_stds = get_chan_data(images_img_data, chan, "bckg_stdev")
         # background_errs = get_chan_data(images_img_data, chan, "bckg_stderr")
         # background_std = np.nanmean(background_stds)
-        # def draw_levey_jennings_plot():
-        #    pass
 
-        #        if signal_mean - 2 * signal_std > 0:
-        #            ax.axhline(
-        #                y=signal_mean - 2 * signal_std,
-        #                color=color_map[c],
-        #                linestyle="dotted",
-        #            )
-        #        if signal_mean - signal_std > 0:
-        #            ax.axhline(
-        #                y=signal_mean - signal_std, color=color_map[c], linestyle="dashed"
-        #            )
-        #        ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
-        #        ax.axhline(
-        #            y=signal_mean + signal_std, color=color_map[c], linestyle="dashed"
-        #        )
-        #        ax.axhline(
-        #            y=signal_mean + 2 * signal_std, color=color_map[c], linestyle="dotted"
-        #        )
+        # if signal_mean - 2 * signal_std > 0:
+        #     ax.axhline(
+        #         y=signal_mean - 2 * signal_std,
+        #         color=color_map[c],
+        #         linestyle="dotted",
+        #     )
+        # if signal_mean - signal_std > 0:
+        #     ax.axhline(
+        #         y=signal_mean - signal_std, color=color_map[c], linestyle="dashed"
+        #     )
+        # ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
+        # ax.axhline(
+        #     y=signal_mean + signal_std, color=color_map[c], linestyle="dashed"
+        # )
+        # ax.axhline(
+        #     y=signal_mean + 2 * signal_std, color=color_map[c], linestyle="dotted"
+        # )
         #
         # last_values.append(signal_data[-1])
         # ax.errorbar(
@@ -334,23 +410,23 @@ if __name__ == "__main__":
         )
 
         # plot statistics summary
-        #        if background_mean - 2 * background_std > 0:
-        #            ax.axhline(
-        #                y=background_mean - 2 * background_std,
-        #                color=color_map[c],
-        #                linestyle="dotted",
-        #            )
-        #        if background_mean - background_std > 0:
-        #            ax.axhline(
-        #                y=background_mean - background_std, color=color_map[c], linestyle="dashed"
-        #            )
-        #        ax.axhline(y=background_mean, color=color_map[c], linestyle="dashdot")
-        #        ax.axhline(
-        #            y=background_mean + background_std, color=color_map[c], linestyle="dashed"
-        #        )
-        #        ax.axhline(
-        #            y=background_mean + 2 * background_std, color=color_map[c], linestyle="dotted"
-        #        )
+        # if background_mean - 2 * background_std > 0:
+        #     ax.axhline(
+        #         y=background_mean - 2 * background_std,
+        #         color=color_map[c],
+        #         linestyle="dotted",
+        #     )
+        # if background_mean - background_std > 0:
+        #     ax.axhline(
+        #         y=background_mean - background_std, color=color_map[c], linestyle="dashed"
+        #     )
+        # ax.axhline(y=background_mean, color=color_map[c], linestyle="dashdot")
+        # ax.axhline(
+        #     y=background_mean + background_std, color=color_map[c], linestyle="dashed"
+        # )
+        # ax.axhline(
+        #     y=background_mean + 2 * background_std, color=color_map[c], linestyle="dotted"
+        # )
         # last_values.append(background_data[-1])
         # ax.errorbar(
         #    range(len(background_data)),
@@ -387,24 +463,6 @@ if __name__ == "__main__":
         #    print(
         #        f"{sorted_sample} -> {images_img_data[sorted_sample]['metadata']['date_time']}"
         #    )
-    vp = ax.violinplot(
-        data_means, showmeans=False, showmedians=False, showextrema=False
-    )
-    for v in vp["bodies"]:
-        v.set_facecolor("black")
-        v.set_edgecolor("black")
-    bp = ax.boxplot(data_norms, meanline=True, showmeans=True)
-    for b in bp["medians"]:
-        b.set_color("black")
-    for b in bp["means"]:
-        b.set_color("black")
-        b.set_linestyle("dashed")
-    ax.set_xticks(
-        [x for x in range(1, len(chans) + 1)],
-        labels=chans,
-        rotation=90,
-        fontsize="small",
-    )
     # plt.yscale("log")
     #    yticks = [0, 0.1]
     # ymax = np.nanmax(means)
@@ -414,3 +472,4 @@ if __name__ == "__main__":
     #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
     plt.ylim(bottom=0.0)
     plt.show()
+    """
