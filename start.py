@@ -327,6 +327,7 @@ if __name__ == "__main__":
     # create figure and axes
     fig, ax = plt.subplots()
 
+    """
     # distribution chart
     data_means = []
     data_norms = []
@@ -357,8 +358,8 @@ if __name__ == "__main__":
     )
     plt.ylim(bottom=0.0)
     plt.show()
-
     """
+
     # channels chart
     data_lasts = []
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
@@ -406,7 +407,6 @@ if __name__ == "__main__":
     plt.xticks(rotation=90, fontsize="small")
     plt.ylim(bottom=0.0)
     plt.show()
-    """
 
     """
     # Levey-Jennings chart
