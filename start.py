@@ -241,9 +241,9 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris",
-        # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*.tif",
+        # path=r"/Users/christianrickert/Desktop/Polaris",
+        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+        pat="*bottom*.tiff",
         anti="",
     )
     # sample experimental image data
@@ -259,12 +259,12 @@ if __name__ == "__main__":
     # print(samples_img_data)
     samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
 
-    chans = set()  # avoid duplicate entries
+    chans_set = set()  # avoid duplicate entries
     for img_data in samples_img_data.values():
         for chan in img_data:
             if chan not in ["metadata"]:
-                chans.add(chan)
-    chans = sorted(chans)
+                chans_set.add(chan)
+    chans = sorted(chans_set)
     # print(chans)
 
     # prepare colormap
@@ -288,6 +288,10 @@ if __name__ == "__main__":
     images_img_data = dict(
         sorted(images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"])
     )
+    for file in images_img_data.keys():
+        print(
+            f"{os.path.basename(file)} -> {images_img_data[file]['metadata']['date_time']}"
+        )
 
     # create figure and axes
     fig, ax = plt.subplots()
@@ -324,10 +328,59 @@ if __name__ == "__main__":
     plt.ylim(bottom=0.0)
     plt.show()
     """
+    # channels chart
+    data_lasts = []
+    signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
+    for c, chan in enumerate(chans):
+        # get image statistics
+        signal_means = get_chan_data(images_img_data, chan, "sign_mean")
+        data_lasts.append(signal_means[-1])
+        signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
+        ax.errorbar(
+            signal_labels,
+            signal_means,
+            yerr=signal_stderrs,
+            fmt="o-",
+            linewidth=1,
+            markersize=2,
+            color=color_map[c],
+            label=chan + " [SIG]",
+        )
+    chans_means = np.array([0.0 for img in images_img_data])
+    chans_stderrs = np.array([0.0 for img in images_img_data])
+    for i, image in enumerate(images_img_data):
+        for chan in chans:
+            chans_means[i] += images_img_data[image][chan]["sign_mean"]
+            chans_stderrs[i] += images_img_data[image][chan]["sign_stderr"]
+    chans_means /= i + 1
+    data_lasts.append(chans_means[-1])
+    chans_stderrs /= i + 1
+    ax.errorbar(
+        signal_labels,
+        chans_means,
+        yerr=chans_stderrs,
+        fmt="o-",
+        linewidth=2,
+        markersize=4,
+        color="black",
+        label="Mean [SIG]",
+    )
+    # order legend elements
+    handles, labels = plt.gca().get_legend_handles_labels()
+    zipped_legends = zip(handles, labels, data_lasts)
+    sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
+    handles, labels, _ = zip(*sorted_legends)
+    legend = ax.legend(
+        handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+    )
+    plt.xticks(rotation=90, fontsize="small")
+    plt.ylim(bottom=0.0)
+    plt.show()
 
+    """
     # Levey-Jennings chart
     data_lasts = []
-    signal_labels = [os.path.basename(file) for file in files]
+    signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
@@ -352,8 +405,10 @@ if __name__ == "__main__":
     plt.xticks(rotation=90, fontsize="small")
     plt.ylim(bottom=0.0)
     plt.show()
+    """
 
     """
+    # code snippets
     # plt.yscale("log")
     #    yticks = [0, 0.1]
     # ymax = np.nanmax(means)
