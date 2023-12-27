@@ -274,12 +274,12 @@ if __name__ == "__main__":
     files = get_files(
         # path=r"/Users/christianrickert/Desktop/Polaris",
         path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*bottom*.tiff",
+        pat="*.tiff",
         anti="",
     )
     # sample experimental image data
     try:
-        samples = get_samples(population=files, perc=10)
+        samples = get_samples(population=files, perc=15)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -296,7 +296,7 @@ if __name__ == "__main__":
             if chan not in ["metadata"]:
                 chans_set.add(chan)
     chans = sorted(chans_set)
-    # print(chans)
+    print(chans)
 
     # prepare colormap
     color_map = get_colormap(len(chans))
@@ -319,15 +319,14 @@ if __name__ == "__main__":
     images_img_data = dict(
         sorted(images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"])
     )
-    for file in images_img_data.keys():
-        print(
-            f"{os.path.basename(file)} -> {images_img_data[file]['metadata']['date_time']}"
-        )
+    # for file in images_img_data.keys():
+    #    print(
+    #        f"{os.path.basename(file)} -> {images_img_data[file]['metadata']['date_time']}"
+    #    )
 
     # create figure and axes
     fig, ax = plt.subplots()
 
-    """
     # distribution chart
     data_means = []
     data_norms = []
@@ -358,6 +357,7 @@ if __name__ == "__main__":
     )
     plt.ylim(bottom=0.0)
     plt.show()
+
     """
     # channels chart
     data_lasts = []
@@ -406,6 +406,7 @@ if __name__ == "__main__":
     plt.xticks(rotation=90, fontsize="small")
     plt.ylim(bottom=0.0)
     plt.show()
+    """
 
     """
     # Levey-Jennings chart
