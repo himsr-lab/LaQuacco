@@ -88,7 +88,8 @@ def get_chan(page):
 
 
 def get_chan_data(imgs_chans_data, chan, data):
-    """Returns the channel data from image data dictionaries.
+    """Returns channel data from image data dictionaries.
+    Works across all images to retrieve the channel data.
 
     Keyword arguments:
     imgs_chans_data -- dictionaries with image data
@@ -116,8 +117,85 @@ def get_colormap(count):
     color_points = np.linspace(0, 1, count)
     return [cm.hsv(color_point) for color_point in color_points]
 
+    for i, image in enumerate(images_img_data):
+        for chan in chans:
+            chans_means[i] += images_img_data[image][chan]["sign_mean"]
+            chans_stderrs[i] += images_img_data[image][chan]["sign_stderr"]
 
-def get_img_data(image, chan_lmbdas=None):
+
+def get_img_data(imgs_chans_data, img, data):
+    """Returns image data from image data dictionaries.
+    Works across all channels to retrieve the image data.
+
+    Keyword arguments:
+    imgs_chans_data -- dictionaries with image data
+    img -- the key determining the image value
+    data -- the key determining the channel data
+    """
+    img_data = []
+    if img in imgs_chans_data:
+        for chan in imgs_chans_data[img].values():
+            if chan not in ["metadata"]:
+                if data in chan:
+                    img_data.append(chan[data])
+                else:  # data missing in channel
+                    img_data.append(None)
+    else:
+        img_data = None
+    # convert to Numpy array, keep Python datatype
+    img_data = np.array(img_data, dtype="float")
+    img_data[img_data == None] = np.nan
+    return img_data
+
+
+def get_samples(population=None, perc=100):
+    """From a list of elements, get a fractional subset of the data.
+
+    Keyword arguments:
+    population -- the list to take the samples from
+    perc -- the percentage the subset represents
+    """
+    size = math.ceil(perc / 100 * len(population)) or 1
+    samples = random.sample(population, size)
+    return samples
+
+
+def get_stats(array):
+    """Calculates basic statistics for the array.
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    mean = np.mean(array)
+    stdev = np.std(array, ddof=1)  # estimating arithmetic mean
+    stderr = get_stderr(array)
+    boxplt = calculate_boxplot(array)
+    return (mean, stdev, stderr, boxplt)
+
+
+def get_stderr(array):
+    """Calculates the standard error of the mean. We're estimating the
+    arithmetic mean, so we're losing one degree of freedom (n - k).
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    if array.size:
+        return np.sqrt(np.var(array, ddof=1) / array.size)
+    else:
+        return np.nan
+
+
+def get_timestamp(timestamp):
+    """Get a timestamp from a corresponding TIFF tag string.
+
+    Keyword arguments:
+    timestamp  -- the timestamp string
+    """
+    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
+
+
+def read_img_data(image, chan_lmbdas=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
@@ -185,53 +263,6 @@ def get_img_data(image, chan_lmbdas=None):
         return (image, img_chans_data)
 
 
-def get_samples(population=None, perc=100):
-    """From a list of elements, get a fractional subset of the data.
-
-    Keyword arguments:
-    population -- the list to take the samples from
-    perc -- the percentage the subset represents
-    """
-    size = math.ceil(perc / 100 * len(population)) or 1
-    samples = random.sample(population, size)
-    return samples
-
-
-def get_stats(array):
-    """Calculates basic statistics for the array.
-
-    Keyword arguments:
-    array -- Numpy array
-    """
-    mean = np.mean(array)
-    stdev = np.std(array, ddof=1)  # estimating arithmetic mean
-    stderr = get_stderr(array)
-    boxplt = calculate_boxplot(array)
-    return (mean, stdev, stderr, boxplt)
-
-
-def get_stderr(array):
-    """Calculates the standard error of the mean. We're estimating the
-    arithmetic mean, so we're losing one degree of freedom (n - k).
-
-    Keyword arguments:
-    array -- Numpy array
-    """
-    if array.size:
-        return np.sqrt(np.var(array, ddof=1) / array.size)
-    else:
-        return np.nan
-
-
-def get_timestamp(timestamp):
-    """Get a timestamp from a corresponding TIFF tag string.
-
-    Keyword arguments:
-    timestamp  -- the timestamp string
-    """
-    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
-
-
 processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
 
 # main program
@@ -255,7 +286,7 @@ if __name__ == "__main__":
         sys.exit(1)
     # analyze the sample
     with multiprocessing.Pool(processes) as pool:
-        sample_results = pool.starmap(get_img_data, sample_args)
+        sample_results = pool.starmap(read_img_data, sample_args)
     # print(samples_img_data)
     samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
 
@@ -281,7 +312,7 @@ if __name__ == "__main__":
     # analyze experimental image data
     image_args = [(image, chan_lmbdas) for image in files]
     with multiprocessing.Pool(processes) as pool:
-        image_results = pool.starmap(get_img_data, image_args)
+        image_results = pool.starmap(read_img_data, image_args)
     images_img_data = {image: img_data for (image, img_data) in image_results}
 
     # sort experimental image data by time stamp
@@ -346,19 +377,18 @@ if __name__ == "__main__":
             color=color_map[c],
             label=chan + " [SIG]",
         )
-    chans_means = np.array([0.0 for img in images_img_data])
-    chans_stderrs = np.array([0.0 for img in images_img_data])
-    for i, image in enumerate(images_img_data):
-        for chan in chans:
-            chans_means[i] += images_img_data[image][chan]["sign_mean"]
-            chans_stderrs[i] += images_img_data[image][chan]["sign_stderr"]
-    chans_means /= i + 1
-    data_lasts.append(chans_means[-1])
-    chans_stderrs /= i + 1
+    img_means = []
+    img_stderrs = []
+    for img in images_img_data:
+        img_means.append(np.nanmean(get_img_data(images_img_data, img, "sign_mean")))
+        img_stderrs.append(
+            np.nanmean(get_img_data(images_img_data, img, "sign_stderr"))
+        )
+    data_lasts.append(img_means[-1])
     ax.errorbar(
         signal_labels,
-        chans_means,
-        yerr=chans_stderrs,
+        img_means,
+        yerr=img_stderrs,
         fmt="o-",
         linewidth=2,
         markersize=4,
