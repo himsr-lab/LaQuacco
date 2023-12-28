@@ -278,7 +278,7 @@ def read_img_data(image, chan_lmbdas=None):
         return (image, img_chans_data)
 
 
-processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
+processes = multiprocessing.cpu_count() - 2  # // 2 or 1  # concurrent workers
 
 
 # main program
@@ -288,9 +288,9 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        path=r"/Users/christianrickert/Desktop/Polaris",
-        # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*.tif",
+        # path=r"/Users/christianrickert/Desktop/Polaris",
+        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+        pat="*.tiff",
         anti="",
     )
     # sample experimental image data
@@ -303,6 +303,9 @@ if __name__ == "__main__":
     # analyze the sample
     with multiprocessing.Pool(processes) as pool:
         sample_results = pool.starmap(read_img_data, sample_args)
+    pool.close()  # wait for worker tasks to complete
+    pool.join()  # wait for worker process to exit
+
     # print(samples_img_data)
     samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
 
@@ -330,6 +333,8 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes) as pool:
         image_results = pool.starmap(read_img_data, image_args)
     images_img_data = {image: img_data for (image, img_data) in image_results}
+    pool.close()  # wait for worker tasks to complete
+    pool.join()  # wait for worker process to exit
 
     # sort experimental image data by time stamp
     images_img_data = dict(
@@ -408,8 +413,8 @@ if __name__ == "__main__":
         img_means,
         yerr=img_stderrs,
         fmt="o-",
-        linewidth=2,
-        markersize=4,
+        linewidth=1,
+        markersize=2,
         color="black",
         label="Mean [SIG]",
     )
@@ -441,7 +446,7 @@ if __name__ == "__main__":
         means = np.zeros(signal_means.size)
         dwn1stdevs = np.zeros(signal_means.size)
         dwn2stdevs = np.zeros(signal_means.size)
-        margin = 5  # 11 samples averaged
+        margin = 4  # 9 samples averaged
         for i, mean in enumerate(signal_means):
             means[i] = np.nanmean(get_run_slice(signal_means, i, margin))
             stdev = np.nanmean(get_run_slice(signal_stdevs, i, margin))
@@ -449,11 +454,11 @@ if __name__ == "__main__":
             up1stdevs[i] = means[i] + 1 * stdev
             dwn1stdevs[i] = means[i] - 1 * stdev
             dwn2stdevs[i] = means[i] - 2 * stdev
-        plt.plot(up2stdevs, color=color_map[c], linestyle=(0, (1, 4)))
-        plt.plot(up1stdevs, color=color_map[c], linestyle=(0, (1, 2)))
-        plt.plot(means, color=color_map[c], linestyle="dashed")
-        plt.plot(dwn1stdevs, color=color_map[c], linestyle=(0, (1, 2)))
-        plt.plot(dwn2stdevs, color=color_map[c], linestyle=(0, (1, 4)))
+        plt.plot(up2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
+        plt.plot(up1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
+        plt.plot(means, color="black", linewidth=1, linestyle="solid")
+        plt.plot(dwn1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
+        plt.plot(dwn2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
         plt.errorbar(
             signal_labels,
             signal_means,
