@@ -272,9 +272,9 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
     files = get_files(
-        # path=r"/Users/christianrickert/Desktop/Polaris",
-        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*.tiff",
+        path=r"/Users/christianrickert/Desktop/Polaris",
+        # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+        pat="*.tif",
         anti="",
     )
     # sample experimental image data
@@ -360,6 +360,7 @@ if __name__ == "__main__":
     plt.show()
     """
 
+    """
     # channels chart
     data_lasts = []
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
@@ -407,37 +408,48 @@ if __name__ == "__main__":
     plt.xticks(rotation=90, fontsize="small")
     plt.ylim(bottom=0.0)
     plt.show()
-
     """
+
     # Levey-Jennings chart
-    data_lasts = []
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
-        data_lasts.append(signal_means[-1])
+        signal_mean = np.nanmean(signal_means)
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
-        ax.errorbar(
+        # add standard deviation lines
+        signal_stdev = np.nanmean(get_chan_data(images_img_data, chan, "sign_stdev"))
+        plt.axhline(
+            y=signal_mean + 2 * signal_stdev, color=color_map[c], linestyle=(0, (1, 5))
+        )
+        plt.axhline(
+            y=signal_mean + 1 * signal_stdev, color=color_map[c], linestyle=(0, (1, 3))
+        )
+        plt.axhline(y=signal_mean, color=color_map[c], linestyle="dashed")
+        plt.axhline(
+            y=signal_mean - 1 * signal_stdev, color=color_map[c], linestyle=(0, (1, 3))
+        )
+        plt.axhline(
+            y=signal_mean - 2 * signal_stdev, color=color_map[c], linestyle=(0, (1, 5))
+        )
+        # ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
+        plt.errorbar(
             signal_labels,
             signal_means,
             yerr=signal_stderrs,
             fmt="o-",
+            linewidth=1,
+            markersize=2,
             color=color_map[c],
             label=chan + " [SIG]",
         )
-    # order legend elements
-    handles, labels = plt.gca().get_legend_handles_labels()
-    zipped_legends = zip(handles, labels, data_lasts)
-    sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
-    handles, labels, _ = zip(*sorted_legends)
-    legend = ax.legend(
-        handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
-    )
-    plt.xticks(rotation=90, fontsize="small")
-    plt.ylim(bottom=0.0)
-    plt.show()
-    """
-
+        legend = plt.legend(
+            loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
+        )
+        plt.xticks(rotation=90, fontsize="small")
+        plt.ylim(bottom=0.0)
+        plt.show()
+        plt.clf()
     """
     # code snippets
     # plt.yscale("log")
