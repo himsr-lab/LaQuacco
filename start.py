@@ -148,7 +148,7 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_run_slice(array, index, margin):
+def get_run_slice(array, index, slice_margin, slice_min=True):
     """Returns the slice of an array centered at the index
      with a margin of elements included before and after.
 
@@ -157,10 +157,16 @@ def get_run_slice(array, index, margin):
     index  -- center position of the slice
     margin  -- element count before and after index
     """
+    slice = np.array(0)
     if array.size > 0:
-        return array[max(0, index - margin) : min(index + margin + 1, array.size)]
+        slice = array[
+            max(0, index - slice_margin) : min(index + slice_margin + 1, array.size)
+        ]
+        if slice_min and slice.size < (1 + 2 * slice_margin):
+            slice = np.array([])
     else:
-        return np.empty(0)
+        slice = np.array([])
+    return slice
 
 
 def get_samples(population=None, perc=100):
@@ -284,15 +290,18 @@ if __name__ == "__main__":
     if platform.system() == "Windows":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
     # get a list of all image files
-    files = get_files(
-        # path=r"/Users/christianrickert/Desktop/Polaris",
-        path=r"/Users/christianrickert/Desktop/MIBI",
-        pat="*.tif",
-        anti="",
+    files = sorted(
+        get_files(
+            # path=r"/Users/christianrickert/Desktop/Polaris",
+            path=r"/Users/christianrickert/Desktop/MIBI",
+            pat="*UCD133*.tif",
+            anti="",
+        ),
+        key=str.lower,
     )
     # sample experimental image data
     try:
-        samples = get_samples(population=files, perc=15)
+        samples = sorted(get_samples(population=files, perc=15), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -300,8 +309,8 @@ if __name__ == "__main__":
     # analyze the sample
     with multiprocessing.Pool(processes) as pool:
         sample_results = pool.starmap(read_img_data, sample_args)
-    pool.close()  # wait for worker tasks to complete
-    pool.join()  # wait for worker process to exit
+        pool.close()  # wait for worker tasks to complete
+        pool.join()  # wait for worker process to exit
 
     # print(samples_img_data)
     samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
@@ -311,7 +320,7 @@ if __name__ == "__main__":
         for chan in img_data:
             if chan not in ["metadata"]:
                 chans_set.add(chan)
-    chans = sorted(chans_set)
+    chans = sorted(chans_set, key=str.lower)
     print(chans)
 
     # prepare colormap
@@ -329,9 +338,10 @@ if __name__ == "__main__":
     image_args = [(image, chan_lmbdas) for image in files]
     with multiprocessing.Pool(processes) as pool:
         image_results = pool.starmap(read_img_data, image_args)
+        pool.close()  # wait for worker tasks to complete
+        pool.join()  # wait for worker process to exit
+
     images_img_data = {image: img_data for (image, img_data) in image_results}
-    pool.close()  # wait for worker tasks to complete
-    pool.join()  # wait for worker process to exit
 
     # sort experimental image data by time stamp
     images_img_data = dict(
@@ -433,29 +443,42 @@ if __name__ == "__main__":
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
-        signal_mean = np.nanmean(signal_means)
-        signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
-        # add standard deviation lines
-        signal_stdev = np.nanmean(get_chan_data(images_img_data, chan, "sign_stdev"))
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
-        up2stdevs = np.zeros(signal_means.size)
-        up1stdevs = np.zeros(signal_means.size)
-        means = np.zeros(signal_means.size)
-        dwn1stdevs = np.zeros(signal_means.size)
-        dwn2stdevs = np.zeros(signal_means.size)
-        margin = 4  # 9 samples averaged
+        signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
+        # get running statistics
+        run_means = np.array([np.nan for n in range(0, signal_means.size)])
+        run_up2stdevs = np.array([np.nan for n in range(0, signal_means.size)])
+        run_up1stdevs = np.array([np.nan for n in range(0, signal_means.size)])
+        run_dwn1stdevs = np.array([np.nan for n in range(0, signal_means.size)])
+        run_dwn2stdevs = np.array([np.nan for n in range(0, signal_means.size)])
+        stdev = np.nan
+        # get trend statistics
+        xs = range(0, len(signal_means))
+        slope, inter = np.polyfit(xs, signal_means, deg=1)
+        trendline = slope * xs + inter
+        run_stderrs = np.array([np.nan for n in range(0, signal_means.size)])
         for i, mean in enumerate(signal_means):
-            means[i] = np.nanmean(get_run_slice(signal_means, i, margin))
-            stdev = np.nanmean(get_run_slice(signal_stdevs, i, margin))
-            up2stdevs[i] = means[i] + 2 * stdev
-            up1stdevs[i] = means[i] + 1 * stdev
-            dwn1stdevs[i] = means[i] - 1 * stdev
-            dwn2stdevs[i] = means[i] - 2 * stdev
-        plt.plot(up2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
-        plt.plot(up1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
-        plt.plot(means, color="black", linewidth=1, linestyle="solid")
-        plt.plot(dwn1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
-        plt.plot(dwn2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
+            slice_means = get_run_slice(signal_means, i, 2, True)
+            if slice_means.size > 0:
+                run_means[i] = np.nanmean(slice_means)
+                slice_stdevs = get_run_slice(signal_stdevs, i, 2, True)
+                if slice_stdevs.size > 0:
+                    stdev = np.nanmean(slice_stdevs)
+                    run_up2stdevs[i] = run_means[i] + 2 * stdev
+                    run_up1stdevs[i] = run_means[i] + 1 * stdev
+                    run_dwn1stdevs[i] = run_means[i] - 1 * stdev
+                    run_dwn2stdevs[i] = run_means[i] - 2 * stdev
+                run_stderrs[i] = get_stderr(run_means[i])
+        upstderrs = trendline + run_stderrs
+        dwnstderrs = trendline - run_stderrs
+        # plot statistics
+        plt.fill_between(xs, upstderrs, dwnstderrs, color="black", alpha=0.2)
+        plt.plot(trendline, color="black", linewidth=1, linestyle="solid")
+        plt.plot(run_up2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
+        plt.plot(run_up1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
+        plt.plot(run_means, color="black", linewidth=1, linestyle="dashed")
+        plt.plot(run_dwn1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
+        plt.plot(run_dwn2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
         plt.errorbar(
             signal_labels,
             signal_means,
@@ -473,6 +496,7 @@ if __name__ == "__main__":
         plt.ylim(bottom=0.0)
         plt.show()
         plt.clf()
+
     """
     # code snippets
     # plt.yscale("log")
