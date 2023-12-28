@@ -148,6 +148,21 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
+def get_run_slice(array, index, margin):
+    """Returns the slice of an array centered at the index
+     with a margin of elements included before and after.
+
+    Keyword arguments:
+    array -- Numpy array
+    index  -- center position of the slice
+    margin  -- element count before and after index
+    """
+    if array.size > 0:
+        return array[max(0, index - margin) : min(index + margin + 1, array.size)]
+    else:
+        return np.empty(0)
+
+
 def get_samples(population=None, perc=100):
     """From a list of elements, get a fractional subset of the data.
 
@@ -264,6 +279,7 @@ def read_img_data(image, chan_lmbdas=None):
 
 
 processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
+
 
 # main program
 if __name__ == "__main__":
@@ -419,20 +435,25 @@ if __name__ == "__main__":
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
         # add standard deviation lines
         signal_stdev = np.nanmean(get_chan_data(images_img_data, chan, "sign_stdev"))
-        plt.axhline(
-            y=signal_mean + 2 * signal_stdev, color=color_map[c], linestyle=(0, (1, 5))
-        )
-        plt.axhline(
-            y=signal_mean + 1 * signal_stdev, color=color_map[c], linestyle=(0, (1, 3))
-        )
-        plt.axhline(y=signal_mean, color=color_map[c], linestyle="dashed")
-        plt.axhline(
-            y=signal_mean - 1 * signal_stdev, color=color_map[c], linestyle=(0, (1, 3))
-        )
-        plt.axhline(
-            y=signal_mean - 2 * signal_stdev, color=color_map[c], linestyle=(0, (1, 5))
-        )
-        # ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
+        signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
+        up2stdevs = np.zeros(signal_means.size)
+        up1stdevs = np.zeros(signal_means.size)
+        means = np.zeros(signal_means.size)
+        dwn1stdevs = np.zeros(signal_means.size)
+        dwn2stdevs = np.zeros(signal_means.size)
+        margin = 5  # 11 samples averaged
+        for i, mean in enumerate(signal_means):
+            means[i] = np.nanmean(get_run_slice(signal_means, i, margin))
+            stdev = np.nanmean(get_run_slice(signal_stdevs, i, margin))
+            up2stdevs[i] = means[i] + 2 * stdev
+            up1stdevs[i] = means[i] + 1 * stdev
+            dwn1stdevs[i] = means[i] - 1 * stdev
+            dwn2stdevs[i] = means[i] - 2 * stdev
+        plt.plot(up2stdevs, color=color_map[c], linestyle=(0, (1, 4)))
+        plt.plot(up1stdevs, color=color_map[c], linestyle=(0, (1, 2)))
+        plt.plot(means, color=color_map[c], linestyle="dashed")
+        plt.plot(dwn1stdevs, color=color_map[c], linestyle=(0, (1, 2)))
+        plt.plot(dwn2stdevs, color=color_map[c], linestyle=(0, (1, 4)))
         plt.errorbar(
             signal_labels,
             signal_means,
