@@ -240,9 +240,6 @@ def read_img_data(image, chan_lmbdas=None):
             pixls = page.asarray().flatten()
             # power-transform data and get image statistics
             if chan_lmbdas:
-                assert (
-                    len(chan_lmbdas) == pages
-                ), "Number of lambdas and channels doesn't match."
                 # get date and time of acquisition
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
@@ -289,8 +286,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = get_files(
         # path=r"/Users/christianrickert/Desktop/Polaris",
-        path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-        pat="*.tiff",
+        path=r"/Users/christianrickert/Desktop/MIBI",
+        pat="*.tif",
         anti="",
     )
     # sample experimental image data
