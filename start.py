@@ -308,15 +308,15 @@ if __name__ == "__main__":
     files = sorted(
         get_files(
             # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI",
-            pat="*UCD133*.tif",
+            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            pat="*.tiff",
             anti="",
         ),
         key=str.lower,
     )
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=15), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -450,7 +450,7 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = 2
+    slice_margin = 3
     slice_min = True
     for c, chan in enumerate(chans):
         # get image statistics
@@ -458,11 +458,12 @@ if __name__ == "__main__":
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
         # get running statistics
-        run_means = np.array([np.nan for n in range(0, signal_means.size)])
-        run_up2stdevs = np.array([np.nan for n in range(0, signal_means.size)])
-        run_up1stdevs = np.array([np.nan for n in range(0, signal_means.size)])
-        run_dwn1stdevs = np.array([np.nan for n in range(0, signal_means.size)])
-        run_dwn2stdevs = np.array([np.nan for n in range(0, signal_means.size)])
+        np_nan = np.array([np.nan for n in range(0, signal_means.size)])
+        run_means = np_nan.copy()
+        run_up2stdevs = np_nan.copy()
+        run_up1stdevs = np_nan.copy()
+        run_dwn1stdevs = np_nan.copy()
+        run_dwn2stdevs = np_nan.copy()
         stdev = np.nan
         # get trend statistics
         xs = range(0, len(signal_means))
