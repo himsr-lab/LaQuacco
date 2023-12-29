@@ -194,8 +194,8 @@ def get_stats(array):
     return (mean, stdev, stderr, boxplt)
 
 
-def get_stderr(array, mean=None, pop=False, out=False):
-    """Calculates the sample standard error of the arithmetic mean.
+def get_var(array, mean=None, pop=False):
+    """Calculates the variance - the variability of the data.
     If we have observed the whole population (all possible samples),
     then we would have as many degrees of freedom as observed samples.
     However, by default we only observe a fraction of all possilbe samples,
@@ -206,20 +206,32 @@ def get_stderr(array, mean=None, pop=False, out=False):
     mean -- arithmetic mean of the samples
     pop -- the samples represent the population
     """
+    variance = np.nan
     if array.size:
-        variance = np.nan
-        stderr = np.nan
         if not mean:
-            mean = np.mean(array)
-        sums_squared = np.sum(np.power(array - mean, 2))
-        if pop and array.size > 0:  # d.f. = n
+            mean = np.nanmean(array)
+        sums_squared = np.sum(np.power(array - mean), 2)  # SS
+        if pop:  # d.f. = n
             variance = sums_squared / array.size
-        elif not pop and array.size > 1:  # d.f. = n - k
+        elif array.size > 1:  # d.f. = n - k
             variance = sums_squared / (array.size - 1)
-        stderr = np.sqrt(variance / array.size)  # unreliability measure
-        return stderr
-    else:
-        return np.nan
+    return variance
+
+
+def get_stderr(array, mean=None, pop=False):
+    """Calculates the standard error of the arithmetic mean.
+
+    Keyword arguments:
+    array -- Numpy array
+    mean -- arithmetic mean of the samples
+    pop -- the samples represent the population
+    """
+    stderr = np.nan
+    if array.size:
+        stderr = np.sqrt(
+            get_var(array, mean, pop) / array.size
+        )  # unreliability measure
+    return stderr
 
 
 def get_timestamp(timestamp):
