@@ -194,15 +194,30 @@ def get_stats(array):
     return (mean, stdev, stderr, boxplt)
 
 
-def get_stderr(array):
-    """Calculates the standard error of the mean. We're estimating the
-    arithmetic mean, so we're losing one degree of freedom (n - k).
+def get_stderr(array, mean=None, pop=False, out=False):
+    """Calculates the sample standard error of the arithmetic mean.
+    If we have observed the whole population (all possible samples),
+    then we would have as many degrees of freedom as observed samples.
+    However, by default we only observe a fraction of all possilbe samples,
+    so we lose one degree of freedom (n-k) - for estimating the arithmetic mean.
 
     Keyword arguments:
     array -- Numpy array
+    mean -- arithmetic mean of the samples
+    pop -- the samples represent the population
     """
     if array.size:
-        return np.sqrt(np.var(array, ddof=1) / array.size)
+        variance = np.nan
+        stderr = np.nan
+        if not mean:
+            mean = np.mean(array)
+        sums_squared = np.sum(np.power(array - mean, 2))
+        if pop and array.size > 0:  # d.f. = n
+            variance = sums_squared / array.size
+        elif not pop and array.size > 1:  # d.f. = n - k
+            variance = sums_squared / (array.size - 1)
+        stderr = np.sqrt(variance / array.size)  # unreliability measure
+        return stderr
     else:
         return np.nan
 
@@ -340,17 +355,12 @@ if __name__ == "__main__":
         image_results = pool.starmap(read_img_data, image_args)
         pool.close()  # wait for worker tasks to complete
         pool.join()  # wait for worker process to exit
-
     images_img_data = {image: img_data for (image, img_data) in image_results}
 
     # sort experimental image data by time stamp
     images_img_data = dict(
         sorted(images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"])
     )
-    # for file in images_img_data.keys():
-    #    print(
-    #        f"{os.path.basename(file)} -> {images_img_data[file]['metadata']['date_time']}"
-    #    )
 
     # create figure and axes
     fig, ax = plt.subplots()
@@ -440,6 +450,8 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
+    slice_margin = 2
+    slice_min = True
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
@@ -455,25 +467,30 @@ if __name__ == "__main__":
         # get trend statistics
         xs = range(0, len(signal_means))
         slope, inter = np.polyfit(xs, signal_means, deg=1)
-        trendline = slope * xs + inter
-        run_stderrs = np.array([np.nan for n in range(0, signal_means.size)])
+        trends = slope * xs + inter
+        trend_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
         for i, mean in enumerate(signal_means):
-            slice_means = get_run_slice(signal_means, i, 2, True)
+            slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
             if slice_means.size > 0:
                 run_means[i] = np.nanmean(slice_means)
-                slice_stdevs = get_run_slice(signal_stdevs, i, 2, True)
+                slice_stdevs = get_run_slice(signal_stdevs, i, slice_margin, slice_min)
                 if slice_stdevs.size > 0:
                     stdev = np.nanmean(slice_stdevs)
                     run_up2stdevs[i] = run_means[i] + 2 * stdev
                     run_up1stdevs[i] = run_means[i] + 1 * stdev
                     run_dwn1stdevs[i] = run_means[i] - 1 * stdev
                     run_dwn2stdevs[i] = run_means[i] - 2 * stdev
-                run_stderrs[i] = get_stderr(run_means[i])
-        upstderrs = trendline + run_stderrs
-        dwnstderrs = trendline - run_stderrs
+                trend_stderrs[i] = get_stderr(
+                    slice_means,
+                    np.nanmean(get_run_slice(trends, i, slice_margin, slice_min)),
+                )
+        trend_up1stderrs = trends + trend_stderrs
+        trend_dwn1stderrs = trends - trend_stderrs
         # plot statistics
-        plt.fill_between(xs, upstderrs, dwnstderrs, color="black", alpha=0.2)
-        plt.plot(trendline, color="black", linewidth=1, linestyle="solid")
+        plt.fill_between(
+            xs, trend_up1stderrs, trend_dwn1stderrs, color="black", alpha=0.2
+        )
+        plt.plot(trends, color="black", linewidth=1, linestyle="solid")
         plt.plot(run_up2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
         plt.plot(run_up1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
         plt.plot(run_means, color="black", linewidth=1, linestyle="dashed")
