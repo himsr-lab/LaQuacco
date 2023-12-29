@@ -190,7 +190,7 @@ def get_stats(array):
     mean = np.mean(array)
     stdev = np.std(array, ddof=1)  # estimating arithmetic mean
     stderr = get_stderr(array)
-    boxplt = calculate_boxplot(array)
+    boxplt = None  # calculate_boxplot(array)
     return (mean, stdev, stderr, boxplt)
 
 
@@ -281,7 +281,7 @@ def read_img_data(image, chan_lmbdas=None):
                 img_chans_data[chan]["sign_mean"] = sign_mean
                 img_chans_data[chan]["sign_stdev"] = sign_stdev
                 img_chans_data[chan]["sign_stderr"] = sign_stderr
-                img_chans_data[chan]["sign_bxplt"] = sign_boxplt
+                # img_chans_data[chan]["sign_bxplt"] = sign_boxplt
                 # get basic statistics for background
                 bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
                     pixls[pixls < pixls_sign_min]
@@ -289,7 +289,7 @@ def read_img_data(image, chan_lmbdas=None):
                 img_chans_data[chan]["bckg_mean"] = bckg_mean
                 img_chans_data[chan]["bckg_stdev"] = bckg_stdev
                 img_chans_data[chan]["bckg_stderr"] = bckg_stderr
-                img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
+                # img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
             else:  # lambda not yet determined
                 norms, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
