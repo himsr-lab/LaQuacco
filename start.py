@@ -332,9 +332,9 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            path=r"/Users/christianrickert/Desktop/Polaris",
-            # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-            pat="*.tif",
+            # path=r"/Users/christianrickert/Desktop/Polaris",
+            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            pat="*bottom*.tiff",
             anti="",
         ),
         key=str.lower,
@@ -475,8 +475,9 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = 2
-    slice_min = False
+    slice_margin = len(files)  # extend slice to either sides
+    slice_min = False  # don't show data for incomplete slices
+    fit_trend = False  # fit a linear regression model of the mean
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
@@ -486,11 +487,15 @@ if __name__ == "__main__":
         np_nan = np.array([np.nan for n in range(0, signal_means.size)])
         run_means = np_nan.copy()
         run_stdevs = np_nan.copy()
+        trend_stdevs = np_nan.copy()
         # get trend statistics
         xs = range(0, len(signal_means))
-        slope, inter = np.polyfit(xs, signal_means, deg=1)
-        trends = slope * xs + inter
-        trend_stdevs = np_nan.copy()
+        if fit_trend:
+            slope, inter = np.polyfit(xs, signal_means, deg=1)
+            trends = slope * xs + inter
+        else:
+            trends = np_nan.copy()
+            trends.fill(np.nanmean(signal_means))
         for i, mean in enumerate(signal_means):
             slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
             if slice_means.size > 0:
@@ -506,15 +511,29 @@ if __name__ == "__main__":
                     trend_mean,
                     ddof=3,  # estimated: slope, intercept, and mean
                 )
-        # fill margins when requested
-        where_stdevs = np.where(~np.isnan(trend_stdevs))[0]
-        trend_stdevs[: where_stdevs[0]] = trend_stdevs[where_stdevs[0]]  # extend left
-        trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
-            where_stdevs[-1]
-        ]  # extend right
+        if not slice_min:
+            # fill `stdevs` array with limit values
+            where_stdevs = np.where(~np.isnan(trend_stdevs))[0]
+            trend_stdevs[: where_stdevs[0]] = trend_stdevs[
+                where_stdevs[0]
+            ]  # extend left
+            trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
+                where_stdevs[-1]
+            ]  # extend right
         # plot statistics
         plt.fill_between(
-            xs, trends + trend_stdevs, trends - trend_stdevs, color="black", alpha=0.2
+            xs,
+            trends + 2.0 * trend_stdevs,
+            trends - 2.0 * trend_stdevs,
+            color="black",
+            alpha=0.1,
+        )
+        plt.fill_between(
+            xs,
+            trends + 1.0 * trend_stdevs,
+            trends - 1.0 * trend_stdevs,
+            color="black",
+            alpha=0.2,
         )
         plt.plot(trends, color="black", linewidth=1, linestyle="solid")
         plt.plot(
@@ -559,126 +578,3 @@ if __name__ == "__main__":
         plt.ylim(bottom=0.0)
         plt.show()
         plt.clf()
-        break
-
-    """
-    # code snippets
-    # plt.yscale("log")
-    #    yticks = [0, 0.1]
-    # ymax = np.nanmax(means)
-    #    while max(yticks) < np.max(means):
-    #        yticks.append(yticks[-1] * 10.0)
-    #    plt.gca().set_yticks(yticks)  # Set the ticks positions
-    #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
-    plt.ylim(bottom=0.0)
-    plt.show()
-
-    for c, chan in enumerate(chans):
-        # get statistics summary
-        signal_data = get_chan_data(images_img_data, chan, "sign_mean")
-        # signal_mean = np.nanmean(signal_data)
-        # signal_stds = get_chan_data(images_img_data, chan, "sign_stdev")
-        # signal_errs = get_chan_data(images_img_data, chan, "sign_stderr")
-        # signal_std = np.nanmean(signal_stds)
-        # background_data = get_chan_data(images_img_data, chan, "bckg_mean")
-        # background_mean = np.nanmean(background_data)
-        # background_stds = get_chan_data(images_img_data, chan, "bckg_stdev")
-        # background_errs = get_chan_data(images_img_data, chan, "bckg_stderr")
-        # background_std = np.nanmean(background_stds)
-
-        # if signal_mean - 2 * signal_std > 0:
-        #     ax.axhline(
-        #         y=signal_mean - 2 * signal_std,
-        #         color=color_map[c],
-        #         linestyle="dotted",
-        #     )
-        # if signal_mean - signal_std > 0:
-        #     ax.axhline(
-        #         y=signal_mean - signal_std, color=color_map[c], linestyle="dashed"
-        #     )
-        # ax.axhline(y=signal_mean, color=color_map[c], linestyle="dashdot")
-        # ax.axhline(
-        #     y=signal_mean + signal_std, color=color_map[c], linestyle="dashed"
-        # )
-        # ax.axhline(
-        #     y=signal_mean + 2 * signal_std, color=color_map[c], linestyle="dotted"
-        # )
-        #
-        # last_values.append(signal_data[-1])
-        # ax.errorbar(
-        #    range(len(signal_data)),
-        #    signal_data,
-        #    yerr=signal_errs,
-        #    fmt="o-",
-        #    color=color_map[c],
-        #    label=chan + " [SIG]",
-        # )
-        data_means.append(signal_data)
-        data_norms.append(
-            boxcox_transform(np.array(signal_data), lmbda=chan_lmbdas[chan])[0]
-        )
-
-        # plot statistics summary
-        # if background_mean - 2 * background_std > 0:
-        #     ax.axhline(
-        #         y=background_mean - 2 * background_std,
-        #         color=color_map[c],
-        #         linestyle="dotted",
-        #     )
-        # if background_mean - background_std > 0:
-        #     ax.axhline(
-        #         y=background_mean - background_std, color=color_map[c], linestyle="dashed"
-        #     )
-        # ax.axhline(y=background_mean, color=color_map[c], linestyle="dashdot")
-        # ax.axhline(
-        #     y=background_mean + background_std, color=color_map[c], linestyle="dashed"
-        # )
-        # ax.axhline(
-        #     y=background_mean + 2 * background_std, color=color_map[c], linestyle="dotted"
-        # )
-        # last_values.append(background_data[-1])
-        # ax.errorbar(
-        #    range(len(background_data)),
-        #    background_data,
-        #    yerr=background_errs,
-        #    fmt=".--",
-        #    color=color_map[c],
-        #    label=chan + " [BGR]",
-        # )
-
-        # order legend elements by first value plotted
-        # handles, labels = plt.gca().get_legend_handles_labels()
-        # zipped_legends = zip(handles, labels, last_values)
-        # sorted_legends = sorted(zipped_legends, key=lambda l: l[-1], reverse=True)
-        # handles, labels, _ = zip(*sorted_legends)
-        # draw legend
-        # legend = ax.legend(
-        #    handles, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize="small"
-        # )
-        # adjust drawing area to fit legend
-        # legend_bbox = legend.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-        # legend_bbox_width = legend_bbox.width / fig.get_size_inches()[0]
-        # fig.subplots_adjust(
-        #    left=0.075, right=(0.95 - legend_bbox_width), wspace=0.05, hspace=0.05
-        # )
-        # plt.subplots_adjust(left=0.2)
-
-        # sorted_samples = dict(
-        #    sorted(
-        #        images_img_data.items(), key=lambda v: v[1]["metadata"]["date_time"]
-        #    )
-        # )
-        # for sorted_sample in sorted_samples:
-        #    print(
-        #        f"{sorted_sample} -> {images_img_data[sorted_sample]['metadata']['date_time']}"
-        #    )
-    # plt.yscale("log")
-    #    yticks = [0, 0.1]
-    # ymax = np.nanmax(means)
-    #    while max(yticks) < np.max(means):
-    #        yticks.append(yticks[-1] * 10.0)
-    #    plt.gca().set_yticks(yticks)  # Set the ticks positions
-    #    plt.gca().set_yticklabels([str(ytick) for ytick in yticks])
-    plt.ylim(bottom=0.0)
-    plt.show()
-    """
