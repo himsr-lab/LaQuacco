@@ -494,7 +494,7 @@ if __name__ == "__main__":
         xs = range(0, len(signal_means))
         slope, inter = np.polyfit(xs, signal_means, deg=1)
         trends = slope * xs + inter
-        trend_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
+        trend_stdevs = get_chan_data(images_img_data, chan, "sign_stderr")
         for i, mean in enumerate(signal_means):
             slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
             if slice_means.size > 0:
@@ -506,12 +506,16 @@ if __name__ == "__main__":
                     run_up1stdevs[i] = run_means[i] + 1 * stdev
                     run_dwn1stdevs[i] = run_means[i] - 1 * stdev
                     run_dwn2stdevs[i] = run_means[i] - 2 * stdev
-                trend_stderrs[i] = get_stderr(
-                    slice_means,
-                    np.nanmean(get_run_slice(trends, i, slice_margin, slice_min)),
+                trend_mean = np.nanmean(
+                    get_run_slice(trends, i, slice_margin, slice_min)
                 )
-        trend_up1stderrs = trends + trend_stderrs
-        trend_dwn1stderrs = trends - trend_stderrs
+                trend_stdevs[i] = get_stdev(
+                    slice_means,
+                    trend_mean,
+                    ddof=3,  # estimated slope, intercept, and mean
+                )
+        trend_up1stderrs = trends + trend_stdevs
+        trend_dwn1stderrs = trends - trend_stdevs
         # plot statistics
         plt.fill_between(
             xs, trend_up1stderrs, trend_dwn1stderrs, color="black", alpha=0.2
