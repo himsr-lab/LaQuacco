@@ -210,7 +210,7 @@ def get_var(array, mean=None, pop=False):
     if array.size:
         if not mean:
             mean = np.nanmean(array)
-        sums_squared = np.sum(np.power(array - mean), 2)  # SS
+        sums_squared = np.sum(np.power(array - mean, 2))  # SS
         if pop:  # d.f. = n
             variance = sums_squared / array.size
         elif array.size > 1:  # d.f. = n - k
@@ -319,16 +319,16 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-            pat="*.tiff",
+            path=r"/Users/christianrickert/Desktop/Polaris",
+            # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            pat="*.tif",
             anti="",
         ),
         key=str.lower,
     )
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=10), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -462,8 +462,8 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = 3
-    slice_min = True
+    slice_margin = 1
+    slice_min = False
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
