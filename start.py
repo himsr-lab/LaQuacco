@@ -485,11 +485,7 @@ if __name__ == "__main__":
         # get running statistics
         np_nan = np.array([np.nan for n in range(0, signal_means.size)])
         run_means = np_nan.copy()
-        run_up2stdevs = np_nan.copy()
-        run_up1stdevs = np_nan.copy()
-        run_dwn1stdevs = np_nan.copy()
-        run_dwn2stdevs = np_nan.copy()
-        stdev = np.nan
+        run_stdevs = np_nan.copy()
         # get trend statistics
         xs = range(0, len(signal_means))
         slope, inter = np.polyfit(xs, signal_means, deg=1)
@@ -499,13 +495,9 @@ if __name__ == "__main__":
             slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
             if slice_means.size > 0:
                 run_means[i] = np.nanmean(slice_means)
-                slice_stdevs = get_run_slice(signal_stdevs, i, slice_margin, slice_min)
-                if slice_stdevs.size > 0:
-                    stdev = np.nanmean(slice_stdevs)
-                    run_up2stdevs[i] = run_means[i] + 2 * stdev
-                    run_up1stdevs[i] = run_means[i] + 1 * stdev
-                    run_dwn1stdevs[i] = run_means[i] - 1 * stdev
-                    run_dwn2stdevs[i] = run_means[i] - 2 * stdev
+                run_stdevs[i] = np.nanmean(
+                    get_run_slice(signal_stdevs, i, slice_margin, slice_min)
+                )
                 trend_mean = np.nanmean(
                     get_run_slice(trends, i, slice_margin, slice_min)
                 )
@@ -520,18 +512,36 @@ if __name__ == "__main__":
         trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
             where_stdevs[-1]
         ]  # extend right
-        trend_up1stderrs = trends + trend_stdevs
-        trend_dwn1stderrs = trends - trend_stdevs
         # plot statistics
         plt.fill_between(
-            xs, trend_up1stderrs, trend_dwn1stderrs, color="black", alpha=0.2
+            xs, trends + trend_stdevs, trends - trend_stdevs, color="black", alpha=0.2
         )
         plt.plot(trends, color="black", linewidth=1, linestyle="solid")
-        plt.plot(run_up2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
-        plt.plot(run_up1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
+        plt.plot(
+            run_means + 2.0 * run_stdevs,
+            color="black",
+            linewidth=1,
+            linestyle=(0, (1, 4)),
+        )
+        plt.plot(
+            run_means + 1.0 * run_stdevs,
+            color="black",
+            linewidth=1,
+            linestyle=(0, (1, 2)),
+        )
         plt.plot(run_means, color="black", linewidth=1, linestyle="dashed")
-        plt.plot(run_dwn1stdevs, color="black", linewidth=1, linestyle=(0, (1, 2)))
-        plt.plot(run_dwn2stdevs, color="black", linewidth=1, linestyle=(0, (1, 4)))
+        plt.plot(
+            run_means - 1.0 * run_stdevs,
+            color="black",
+            linewidth=1,
+            linestyle=(0, (1, 2)),
+        )
+        plt.plot(
+            run_means - 2.0 * run_stdevs,
+            color="black",
+            linewidth=1,
+            linestyle=(0, (1, 4)),
+        )
         plt.errorbar(
             signal_labels,
             signal_means,
