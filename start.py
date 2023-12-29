@@ -189,7 +189,7 @@ def get_stats(array):
     """
     mean = np.mean(array)
     stdev = np.std(array, ddof=1)  # estimating arithmetic mean
-    stderr = get_stderr(array)
+    stderr = get_stderr(array, ddof=1)
     boxplt = None  # calculate_boxplot(array)
     return (mean, stdev, stderr, boxplt)
 
@@ -241,9 +241,9 @@ def get_var(array, mean=None, ddof=1):
         if not mean:
             mean = np.nanmean(array)
         sums_squared = np.sum(np.power(array - mean, 2))  # SS
-        degr_freedom = array.size - 1
-        if degr_freedom > 0:
-            variance = sums_squared / degr_freedom
+        degrs_freedom = array.size - ddof
+        if degrs_freedom > 0:
+            variance = sums_squared / degrs_freedom
     return variance
 
 
@@ -475,7 +475,7 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = 1
+    slice_margin = 2
     slice_min = False
     for c, chan in enumerate(chans):
         # get image statistics
@@ -494,7 +494,7 @@ if __name__ == "__main__":
         xs = range(0, len(signal_means))
         slope, inter = np.polyfit(xs, signal_means, deg=1)
         trends = slope * xs + inter
-        trend_stdevs = get_chan_data(images_img_data, chan, "sign_stderr")
+        trend_stdevs = np_nan.copy()
         for i, mean in enumerate(signal_means):
             slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
             if slice_means.size > 0:
@@ -512,8 +512,14 @@ if __name__ == "__main__":
                 trend_stdevs[i] = get_stdev(
                     slice_means,
                     trend_mean,
-                    ddof=3,  # estimated slope, intercept, and mean
+                    ddof=3,  # estimated: slope, intercept, and mean
                 )
+        # fill margins when requested
+        where_stdevs = np.where(~np.isnan(trend_stdevs))[0]
+        trend_stdevs[: where_stdevs[0]] = trend_stdevs[where_stdevs[0]]  # extend left
+        trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
+            where_stdevs[-1]
+        ]  # extend right
         trend_up1stderrs = trends + trend_stdevs
         trend_dwn1stderrs = trends - trend_stdevs
         # plot statistics
@@ -543,6 +549,7 @@ if __name__ == "__main__":
         plt.ylim(bottom=0.0)
         plt.show()
         plt.clf()
+        break
 
     """
     # code snippets
