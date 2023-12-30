@@ -158,7 +158,7 @@ def get_mean(array):
     array -- Numpy array
     """
     mean = np.nan
-    if array.size > 0 and np.all(~np.isnan(array)):
+    if array.size > 0 and not np.all(np.isnan(array)):
         mean = np.nanmean(array)
     return mean
 
@@ -201,8 +201,7 @@ def get_stats(array):
     mean = get_mean(array)
     stdev = get_stdev(array)
     stderr = get_stderr(array)
-    boxplt = calculate_boxplot(array)
-    return (mean, stdev, stderr, boxplt)
+    return (mean, stdev, stderr)
 
 
 def get_stderr(array, mean=None, ddof=1):
@@ -309,23 +308,23 @@ def read_img_data(image, chan_lmbdas=None):
                 pixls_sign_min = sp.special.inv_boxcox(
                     norms_sign_min, chan_lmbdas[chan]
                 )
+                if np.isnan(pixls_sign_min):  # bottom whisker missing
+                    pixls_sign_min = 0.0
                 img_chans_data[chan]["sign_min"] = pixls_sign_min
                 # get basic statistics for signal
-                sign_mean, sign_stdev, sign_stderr, sign_boxplt = get_stats(
+                sign_mean, sign_stdev, sign_stderr = get_stats(
                     pixls[pixls >= pixls_sign_min]
                 )
                 img_chans_data[chan]["sign_mean"] = sign_mean
                 img_chans_data[chan]["sign_stdev"] = sign_stdev
                 img_chans_data[chan]["sign_stderr"] = sign_stderr
-                # img_chans_data[chan]["sign_bxplt"] = sign_boxplt
                 # get basic statistics for background
-                bckg_mean, bckg_stdev, bckg_stderr, bckg_boxplt = get_stats(
+                bckg_mean, bckg_stdev, bckg_stderr = get_stats(
                     pixls[pixls < pixls_sign_min]
                 )
                 img_chans_data[chan]["bckg_mean"] = bckg_mean
                 img_chans_data[chan]["bckg_stdev"] = bckg_stdev
                 img_chans_data[chan]["bckg_stderr"] = bckg_stderr
-                # img_chans_data[chan]["bckg_bxplt"] = bckg_boxplt
             else:  # lambda not yet determined
                 norms, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
@@ -343,8 +342,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            path=r"/Users/christianrickert/Desktop/Polaris",
-            # path=r"/Users/christianrickert/Desktop/MIBI",
+            # path=r"/Users/christianrickert/Desktop/Polaris",
+            path=r"/Users/christianrickert/Desktop/MIBI",
             pat="*.tif",
             anti="",
         ),
@@ -352,7 +351,8 @@ if __name__ == "__main__":
     )
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=10), key=str.lower)
+        # samples = sorted(get_samples(population=files, perc=10), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=0.5), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -372,7 +372,7 @@ if __name__ == "__main__":
             if chan not in ["metadata"]:
                 chans_set.add(chan)
     chans = sorted(chans_set, key=str.lower)
-    print(chans)
+    # print(chans)
 
     # prepare colormap
     color_map = get_colormap(len(chans))
@@ -384,6 +384,8 @@ if __name__ == "__main__":
         chan_mean = get_mean(chan_data)
         chan_lmbdas[chan] = chan_mean
     # print(chan_lmbdas)
+
+    files = samples
 
     # analyze experimental image data
     image_args = [(image, chan_lmbdas) for image in files]
@@ -493,14 +495,21 @@ if __name__ == "__main__":
     assert (
         slice_size > 3
     ), "Zero degrees of freedom to estimate the standard deviation from the trend line."
-    for c, chan in enumerate(chans):
+    file_len = len(files)
+    xs = range(0, file_len)
+    np_nan = np.full(file_len, np.nan)
+    for c, chan in enumerate(chans[:2]):
         # get image statistics
-        file_len = len(files)
-        np_nan = np.full(file_len, np.nan)
-        xs = range(0, file_len)
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
+        # print(chans)
+        # print(images_img_data)
+        print(signal_means)
+        print()
+        print(signal_stdevs)
+        print()
+        print(signal_stderrs)
         # get trend statistics
         trend_vals = np_nan.copy()
         trend_stdevs = np_nan.copy()
@@ -509,6 +518,8 @@ if __name__ == "__main__":
             trend_vals = slope * xs + inter
         else:
             trend_vals.fill(get_mean(signal_means))
+        print(get_mean(signal_means))
+        print(trend_vals)
         # get running statistics
         run_slice = np_nan.copy()
         run_means = np_nan.copy()
