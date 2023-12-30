@@ -339,20 +339,21 @@ if __name__ == "__main__":
     # safe import of main module avoids spawning multiple processes simultaneously
     if platform.system() == "Windows":
         multiprocessing.freeze_support()  # required by 'multiprocessing'
+
     # get a list of all image files
     files = sorted(
         get_files(
             # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI",
-            pat="*.tif",
+            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            pat="*.tiff",
             anti="",
         ),
         key=str.lower,
     )
+
     # sample experimental image data
     try:
-        # samples = sorted(get_samples(population=files, perc=10), key=str.lower)
-        samples = sorted(get_samples(population=files, perc=0.5), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -362,8 +363,6 @@ if __name__ == "__main__":
         sample_results = pool.starmap(read_img_data, sample_args)
         pool.close()  # wait for worker tasks to complete
         pool.join()  # wait for worker process to exit
-
-    # print(samples_img_data)
     samples_img_data = {sample: img_data for (sample, img_data) in sample_results}
 
     chans_set = set()  # avoid duplicate entries
@@ -372,7 +371,6 @@ if __name__ == "__main__":
             if chan not in ["metadata"]:
                 chans_set.add(chan)
     chans = sorted(chans_set, key=str.lower)
-    # print(chans)
 
     # prepare colormap
     color_map = get_colormap(len(chans))
@@ -383,9 +381,6 @@ if __name__ == "__main__":
         chan_data = get_chan_data(samples_img_data, chan, "chan_lmbda")
         chan_mean = get_mean(chan_data)
         chan_lmbdas[chan] = chan_mean
-    # print(chan_lmbdas)
-
-    files = samples
 
     # analyze experimental image data
     image_args = [(image, chan_lmbdas) for image in files]
@@ -498,28 +493,19 @@ if __name__ == "__main__":
     file_len = len(files)
     xs = range(0, file_len)
     np_nan = np.full(file_len, np.nan)
-    for c, chan in enumerate(chans[:2]):
+    for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
-        # print(chans)
-        # print(images_img_data)
-        print(signal_means)
-        print()
-        print(signal_stdevs)
-        print()
-        print(signal_stderrs)
         # get trend statistics
-        trend_vals = np_nan.copy()
+        trend_vals = np_nan.copy()  # extends X axis with insufficient Y data
         trend_stdevs = np_nan.copy()
         if fit_trend:
             slope, inter = np.polyfit(xs, signal_means, deg=1)
             trend_vals = slope * xs + inter
         else:
             trend_vals.fill(get_mean(signal_means))
-        print(get_mean(signal_means))
-        print(trend_vals)
         # get running statistics
         run_slice = np_nan.copy()
         run_means = np_nan.copy()
@@ -547,13 +533,27 @@ if __name__ == "__main__":
                     where_stdevs[-1]
                 ]  # extend right
         # plot statistics
-        plt.fill_between(
-            xs,
-            trend_vals + 2.0 * trend_stdevs,
-            trend_vals - 2.0 * trend_stdevs,
-            color="black",
-            alpha=0.1,
-        )
+        for dist in [2.0, 1.0, -1.0, -2.0]:
+            linestyle = (0, (1, 2))
+            if abs(dist) == 2.0:
+                linestyle = linestyle = (0, (1, 4))
+            plt.plot(
+                run_means + dist * run_stdevs,
+                color="black",
+                linewidth=1,
+                linestyle=linestyle,
+            )
+        for dist in [2.0, 1.0]:
+            alpha = 0.2
+            if abs(dist) == 1.0:
+                alpha = 0.1
+            plt.fill_between(
+                xs,
+                trend_vals + dist * trend_stdevs,
+                trend_vals - dist * trend_stdevs,
+                color="black",
+                alpha=alpha,
+            )
         plt.fill_between(
             xs,
             trend_vals + 1.0 * trend_stdevs,
@@ -562,31 +562,7 @@ if __name__ == "__main__":
             alpha=0.2,
         )
         plt.plot(trend_vals, color="black", linewidth=1, linestyle="solid")
-        plt.plot(
-            run_means + 2.0 * run_stdevs,
-            color="black",
-            linewidth=1,
-            linestyle=(0, (1, 4)),
-        )
-        plt.plot(
-            run_means + 1.0 * run_stdevs,
-            color="black",
-            linewidth=1,
-            linestyle=(0, (1, 2)),
-        )
         plt.plot(run_means, color="black", linewidth=1, linestyle="dashed")
-        plt.plot(
-            run_means - 1.0 * run_stdevs,
-            color="black",
-            linewidth=1,
-            linestyle=(0, (1, 2)),
-        )
-        plt.plot(
-            run_means - 2.0 * run_stdevs,
-            color="black",
-            linewidth=1,
-            linestyle=(0, (1, 4)),
-        )
         plt.errorbar(
             signal_labels,
             signal_means,
