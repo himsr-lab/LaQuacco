@@ -148,6 +148,21 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
+def get_mean(array):
+    """Returns the arithmetic mean.
+    Numpy produces a `RuntimeError` when all elements of the array
+    are `np.nan` values. Instead of returning an error, we return `np.nan`.
+
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    mean = np.nan
+    if array.size > 0 and np.all(~np.isnan(array)):
+        mean = np.nanmean(array)
+    return mean
+
+
 def get_run_slice(array, index, slice_margin, slice_min=True):
     """Returns the slice of an array centered at the index
      with a margin of elements included before and after.
@@ -187,7 +202,7 @@ def get_stats(array):
     Keyword arguments:
     array -- Numpy array
     """
-    mean = np.nanmean(array)
+    mean = get_mean(array)
     stdev = np.nanstd(array, ddof=1)  # estimating arithmetic mean
     stderr = get_stderr(array, ddof=1)
     boxplt = None  # calculate_boxplot(array)
@@ -239,7 +254,7 @@ def get_var(array, mean=None, ddof=1):
     variance = np.nan
     if array.size:
         if not mean:
-            mean = np.nanmean(array)
+            mean = get_mean(array)
         sums_squared = np.nansum(np.power(array - mean, 2))  # SS
         degrs_freedom = array.size - ddof
         if degrs_freedom > 0:
@@ -332,8 +347,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI",
+            path=r"/Users/christianrickert/Desktop/Polaris",
+            # path=r"/Users/christianrickert/Desktop/MIBI",
             pat="*.tif",
             anti="",
         ),
@@ -370,7 +385,7 @@ if __name__ == "__main__":
     chan_lmbdas = {}
     for chan in chans:
         chan_data = get_chan_data(samples_img_data, chan, "chan_lmbda")
-        chan_mean = np.nanmean(chan_data)
+        chan_mean = get_mean(chan_data)
         chan_lmbdas[chan] = chan_mean
     # print(chan_lmbdas)
 
@@ -445,9 +460,9 @@ if __name__ == "__main__":
     img_means = []
     img_stderrs = []
     for img in images_img_data:
-        img_means.append(np.nanmean(get_img_data(images_img_data, img, "sign_mean")))
+        img_means.append(get_mean(get_img_data(images_img_data, img, "sign_mean")))
         img_stderrs.append(
-            np.nanmean(get_img_data(images_img_data, img, "sign_stderr"))
+            get_mean(get_img_data(images_img_data, img, "sign_stderr"))
         )
     data_lasts.append(img_means[-1])
     ax.errorbar(
@@ -475,40 +490,38 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = len(files)  # extend slice to either sides
+    slice_margin = 2  # extend slice to either sides
     slice_min = False  # don't show data for incomplete slices
     fit_trend = False  # fit a linear regression model of the mean
     for c, chan in enumerate(chans):
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
+        xs = range(0, signal_means.size)
+        np_nan = np.full(signal_means.size, np.nan)
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
-        # get running statistics
-        np_nan = np.array([np.nan for n in range(0, signal_means.size)])
-        run_means = np_nan.copy()
-        run_stdevs = np_nan.copy()
-        trend_stdevs = np_nan.copy()
         # get trend statistics
-        xs = range(0, len(signal_means))
+        trend_vals = np_nan.copy()
+        trend_stdevs = np_nan.copy()
         if fit_trend:
             slope, inter = np.polyfit(xs, signal_means, deg=1)
-            trends = slope * xs + inter
+            trend_vals = slope * xs + inter
         else:
-            trends = np_nan.copy()
-            trends.fill(np.nanmean(signal_means))
+            trend_vals.fill(get_mean(signal_means))
+        # get running statistics
+        run_slice = np_nan.copy()
+        run_means = np_nan.copy()
+        run_stdevs = np_nan.copy()
         for i, mean in enumerate(signal_means):
-            slice_means = get_run_slice(signal_means, i, slice_margin, slice_min)
-            if slice_means.size > 0:
-                run_means[i] = np.nanmean(slice_means)
-                run_stdevs[i] = np.nanmean(
-                    get_run_slice(signal_stdevs, i, slice_margin, slice_min)
-                )
-                trend_mean = np.nanmean(
-                    get_run_slice(trends, i, slice_margin, slice_min)
-                )
+            run_slice = get_run_slice(signal_means, i, slice_margin, slice_min)
+            run_means[i] = get_mean(run_slice)
+            run_stdevs[i] = get_mean(
+                get_run_slice(signal_stdevs, i, slice_margin, slice_min)
+            )
+            if run_slice.size > 3:
                 trend_stdevs[i] = get_stdev(
-                    slice_means,
-                    trend_mean,
+                    run_slice,
+                    get_mean(get_run_slice(trend_vals, i, slice_margin, slice_min)),
                     ddof=3,  # estimated: slope, intercept, and mean
                 )
         if not slice_min:
@@ -524,19 +537,19 @@ if __name__ == "__main__":
         # plot statistics
         plt.fill_between(
             xs,
-            trends + 2.0 * trend_stdevs,
-            trends - 2.0 * trend_stdevs,
+            trend_vals + 2.0 * trend_stdevs,
+            trend_vals - 2.0 * trend_stdevs,
             color="black",
             alpha=0.1,
         )
         plt.fill_between(
             xs,
-            trends + 1.0 * trend_stdevs,
-            trends - 1.0 * trend_stdevs,
+            trend_vals + 1.0 * trend_stdevs,
+            trend_vals - 1.0 * trend_stdevs,
             color="black",
             alpha=0.2,
         )
-        plt.plot(trends, color="black", linewidth=1, linestyle="solid")
+        plt.plot(trend_vals, color="black", linewidth=1, linestyle="solid")
         plt.plot(
             run_means + 2.0 * run_stdevs,
             color="black",
@@ -579,3 +592,4 @@ if __name__ == "__main__":
         plt.ylim(bottom=0.0)
         plt.show()
         plt.clf()
+        break
