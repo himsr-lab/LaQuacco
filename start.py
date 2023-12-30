@@ -177,10 +177,6 @@ def get_run_slice(array, index, slice_margin, slice_min=True):
         slice = array[
             max(0, index - slice_margin) : min(index + slice_margin + 1, array.size)
         ]
-        if slice_min and slice.size < (1 + 2 * slice_margin):
-            slice = np.array([])
-    else:
-        slice = np.array([])
     return slice
 
 
@@ -203,9 +199,9 @@ def get_stats(array):
     array -- Numpy array
     """
     mean = get_mean(array)
-    stdev = np.nanstd(array, ddof=1)  # estimating arithmetic mean
-    stderr = get_stderr(array, ddof=1)
-    boxplt = None  # calculate_boxplot(array)
+    stdev = get_stdev(array)
+    stderr = get_stderr(array)
+    boxplt = calculate_boxplot(array)
     return (mean, stdev, stderr, boxplt)
 
 
@@ -255,7 +251,7 @@ def get_var(array, mean=None, ddof=1):
     if array.size:
         if not mean:
             mean = get_mean(array)
-        sums_squared = np.nansum(np.power(array - mean, 2))  # SS
+        sums_squared = np.nansum(np.power(array - mean, 2))
         degrs_freedom = array.size - ddof
         if degrs_freedom > 0:
             variance = sums_squared / degrs_freedom
@@ -347,8 +343,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            path=r"/Users/christianrickert/Desktop/Polaris",
-            # path=r"/Users/christianrickert/Desktop/MIBI",
+            # path=r"/Users/christianrickert/Desktop/Polaris",
+            path=r"/Users/christianrickert/Desktop/MIBI",
             pat="*.tif",
             anti="",
         ),
@@ -356,7 +352,7 @@ if __name__ == "__main__":
     )
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=10), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -490,14 +486,19 @@ if __name__ == "__main__":
 
     # Levey-Jennings chart
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
-    slice_margin = 2  # extend slice to either sides
+    slice_margin = len(files) - 1  # extend slice to either sides
     slice_min = False  # don't show data for incomplete slices
     fit_trend = False  # fit a linear regression model of the mean
+    slice_size = 2 * slice_margin + 1
+    assert (
+        slice_size > 3
+    ), "Zero degrees of freedom to estimate the standard deviation from the trend line."
     for c, chan in enumerate(chans):
         # get image statistics
+        file_len = len(files)
+        np_nan = np.full(file_len, np.nan)
+        xs = range(0, file_len)
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
-        xs = range(0, signal_means.size)
-        np_nan = np.full(signal_means.size, np.nan)
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
         # get trend statistics
@@ -514,11 +515,11 @@ if __name__ == "__main__":
         run_stdevs = np_nan.copy()
         for i, mean in enumerate(signal_means):
             run_slice = get_run_slice(signal_means, i, slice_margin, slice_min)
-            run_means[i] = get_mean(run_slice)
-            run_stdevs[i] = get_mean(
-                get_run_slice(signal_stdevs, i, slice_margin, slice_min)
-            )
-            if run_slice.size > 3:
+            if not slice_min or run_slice.size == slice_size:
+                run_means[i] = get_mean(run_slice)
+                run_stdevs[i] = get_mean(
+                    get_run_slice(signal_stdevs, i, slice_margin, slice_min)
+                )
                 trend_stdevs[i] = get_stdev(
                     run_slice,
                     get_mean(get_run_slice(trend_vals, i, slice_margin, slice_min)),
@@ -592,4 +593,3 @@ if __name__ == "__main__":
         plt.ylim(bottom=0.0)
         plt.show()
         plt.clf()
-        break
