@@ -104,7 +104,7 @@ def get_chan_data(imgs_chans_data, chan, data):
             chan_data.append(None)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
-    chan_data[chans_data == None] = np.nan
+    chan_data[chan_data == None] = np.nan
     return chan_data
 
 
@@ -343,8 +343,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI",
+            path=r"/Users/christianrickert/Desktop/Polaris",
+            # path=r"/Users/christianrickert/Desktop/MIBI",
             pat="*.tif",
             anti="",
         ),
