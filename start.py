@@ -187,8 +187,8 @@ def get_stats(array):
     Keyword arguments:
     array -- Numpy array
     """
-    mean = np.mean(array)
-    stdev = np.std(array, ddof=1)  # estimating arithmetic mean
+    mean = np.nanmean(array)
+    stdev = np.nanstd(array, ddof=1)  # estimating arithmetic mean
     stderr = get_stderr(array, ddof=1)
     boxplt = None  # calculate_boxplot(array)
     return (mean, stdev, stderr, boxplt)
@@ -240,7 +240,7 @@ def get_var(array, mean=None, ddof=1):
     if array.size:
         if not mean:
             mean = np.nanmean(array)
-        sums_squared = np.sum(np.power(array - mean, 2))  # SS
+        sums_squared = np.nansum(np.power(array - mean, 2))  # SS
         degrs_freedom = array.size - ddof
         if degrs_freedom > 0:
             variance = sums_squared / degrs_freedom
@@ -333,15 +333,15 @@ if __name__ == "__main__":
     files = sorted(
         get_files(
             # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-            pat="*bottom*.tiff",
+            path=r"/Users/christianrickert/Desktop/MIBI",
+            pat="*.tif",
             anti="",
         ),
         key=str.lower,
     )
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=10), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
@@ -514,12 +514,13 @@ if __name__ == "__main__":
         if not slice_min:
             # fill `stdevs` array with limit values
             where_stdevs = np.where(~np.isnan(trend_stdevs))[0]
-            trend_stdevs[: where_stdevs[0]] = trend_stdevs[
-                where_stdevs[0]
-            ]  # extend left
-            trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
-                where_stdevs[-1]
-            ]  # extend right
+            if where_stdevs.size > 0:  # channel might be sparse with images
+                trend_stdevs[: where_stdevs[0]] = trend_stdevs[
+                    where_stdevs[0]
+                ]  # extend left
+                trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
+                    where_stdevs[-1]
+                ]  # extend right
         # plot statistics
         plt.fill_between(
             xs,
