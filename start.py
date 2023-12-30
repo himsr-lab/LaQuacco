@@ -312,19 +312,17 @@ def read_img_data(image, chan_lmbdas=None):
                     pixls_sign_min = 0.0
                 img_chans_data[chan]["sign_min"] = pixls_sign_min
                 # get basic statistics for signal
-                sign_mean, sign_stdev, sign_stderr = get_stats(
-                    pixls[pixls >= pixls_sign_min]
-                )
-                img_chans_data[chan]["sign_mean"] = sign_mean
-                img_chans_data[chan]["sign_stdev"] = sign_stdev
-                img_chans_data[chan]["sign_stderr"] = sign_stderr
+                (
+                    img_chans_data[chan]["sign_mean"],
+                    img_chans_data[chan]["sign_stdev"],
+                    img_chans_data[chan]["sign_stderr"],
+                ) = get_stats(pixls[pixls >= pixls_sign_min])
                 # get basic statistics for background
-                bckg_mean, bckg_stdev, bckg_stderr = get_stats(
-                    pixls[pixls < pixls_sign_min]
-                )
-                img_chans_data[chan]["bckg_mean"] = bckg_mean
-                img_chans_data[chan]["bckg_stdev"] = bckg_stdev
-                img_chans_data[chan]["bckg_stderr"] = bckg_stderr
+                (
+                    img_chans_data[chan]["bckg_mean"],
+                    img_chans_data[chan]["bckg_stdev"],
+                    img_chans_data[chan]["bckg_stderr"],
+                ) = get_stats(pixls[pixls < pixls_sign_min])
             else:  # lambda not yet determined
                 norms, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
@@ -494,43 +492,47 @@ if __name__ == "__main__":
     xs = range(0, file_len)
     np_nan = np.full(file_len, np.nan)
     for c, chan in enumerate(chans):
+        # prepare variables
+        trend_stats = {stat: np_nan.copy() for stat in ["vals", "stdevs", "where"]}
+        run_stats = {stat: np_nan.copy() for stat in ["slice", "means", "stdevs"]}
         # get image statistics
         signal_means = get_chan_data(images_img_data, chan, "sign_mean")
         signal_stdevs = get_chan_data(images_img_data, chan, "sign_stdev")
         signal_stderrs = get_chan_data(images_img_data, chan, "sign_stderr")
         # get trend statistics
-        trend_vals = np_nan.copy()  # extends X axis with insufficient Y data
-        trend_stdevs = np_nan.copy()
         if fit_trend:
             slope, inter = np.polyfit(xs, signal_means, deg=1)
-            trend_vals = slope * xs + inter
+            trend_stats["vals"] = slope * xs + inter
         else:
-            trend_vals.fill(get_mean(signal_means))
+            trend_stats["vals"].fill(get_mean(signal_means))
         # get running statistics
-        run_slice = np_nan.copy()
-        run_means = np_nan.copy()
-        run_stdevs = np_nan.copy()
         for i, mean in enumerate(signal_means):
-            run_slice = get_run_slice(signal_means, i, slice_margin, slice_min)
-            if not slice_min or run_slice.size == slice_size:
-                run_means[i] = get_mean(run_slice)
-                run_stdevs[i] = get_mean(
+            run_stats["slice"] = get_run_slice(signal_means, i, slice_margin, slice_min)
+            if not slice_min or run_stats["slice"].size == slice_size:
+                run_stats["means"][i] = get_mean(run_stats["slice"])
+                run_stats["stdevs"][i] = get_mean(
                     get_run_slice(signal_stdevs, i, slice_margin, slice_min)
                 )
-                trend_stdevs[i] = get_stdev(
-                    run_slice,
-                    get_mean(get_run_slice(trend_vals, i, slice_margin, slice_min)),
+                trend_stats["stdevs"][i] = get_stdev(
+                    run_stats["slice"],
+                    get_mean(
+                        get_run_slice(trend_stats["vals"], i, slice_margin, slice_min)
+                    ),
                     ddof=3,  # estimated: slope, intercept, and mean
                 )
         if not slice_min:
             # fill `stdevs` array with limit values
-            where_stdevs = np.where(~np.isnan(trend_stdevs))[0]
-            if where_stdevs.size > 0:  # channel might be sparse with images
-                trend_stdevs[: where_stdevs[0]] = trend_stdevs[
-                    where_stdevs[0]
+            trend_stats["where"] = np.where(~np.isnan(trend_stats["stdevs"]))[0]
+            if trend_stats["where"].size > 0:  # channel might be sparse with images
+                trend_stats["stdevs"][: trend_stats["where"][0]] = trend_stats[
+                    "stdevs"
+                ][
+                    trend_stats["where"][0]
                 ]  # extend left
-                trend_stdevs[where_stdevs[-1] :] = trend_stdevs[
-                    where_stdevs[-1]
+                trend_stats["stdevs"][trend_stats["where"][-1] :] = trend_stats[
+                    "stdevs"
+                ][
+                    trend_stats["where"][-1]
                 ]  # extend right
         # plot statistics
         for dist in [2.0, 1.0, -1.0, -2.0]:
@@ -538,7 +540,7 @@ if __name__ == "__main__":
             if abs(dist) == 2.0:
                 linestyle = linestyle = (0, (1, 4))
             plt.plot(
-                run_means + dist * run_stdevs,
+                run_stats["means"] + dist * run_stats["stdevs"],
                 color="black",
                 linewidth=1,
                 linestyle=linestyle,
@@ -549,20 +551,20 @@ if __name__ == "__main__":
                 alpha = 0.1
             plt.fill_between(
                 xs,
-                trend_vals + dist * trend_stdevs,
-                trend_vals - dist * trend_stdevs,
+                trend_stats["vals"] + dist * trend_stats["stdevs"],
+                trend_stats["vals"] - dist * trend_stats["stdevs"],
                 color="black",
                 alpha=alpha,
             )
         plt.fill_between(
             xs,
-            trend_vals + 1.0 * trend_stdevs,
-            trend_vals - 1.0 * trend_stdevs,
+            trend_stats["vals"] + 1.0 * trend_stats["stdevs"],
+            trend_stats["vals"] - 1.0 * trend_stats["stdevs"],
             color="black",
             alpha=0.2,
         )
-        plt.plot(trend_vals, color="black", linewidth=1, linestyle="solid")
-        plt.plot(run_means, color="black", linewidth=1, linestyle="dashed")
+        plt.plot(trend_stats["vals"], color="black", linewidth=1, linestyle="solid")
+        plt.plot(run_stats["means"], color="black", linewidth=1, linestyle="dashed")
         plt.errorbar(
             signal_labels,
             signal_means,
