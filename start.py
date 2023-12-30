@@ -343,9 +343,9 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            # path=r"/Users/christianrickert/Desktop/Polaris",
-            path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
-            pat="*.tiff",
+            path=r"/Users/christianrickert/Desktop/Polaris",
+            # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            pat="*.tif",
             anti="",
         ),
         key=str.lower,
@@ -353,7 +353,7 @@ if __name__ == "__main__":
 
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=20), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=100), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
