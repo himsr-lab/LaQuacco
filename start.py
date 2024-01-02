@@ -18,7 +18,7 @@ import scipy as sp
 def boxcox_transform(array, lmbda=None):
     """Power-transforms a Numpy array with the `numpy.stats.boxcox` function.
     If the value of `lambda` is not given (None), the fuction will determine
-    its optimal value that maximizes the log-likelihood function.
+    the optimal value that maximizes the log-likelihood function.
     The data needs to be positive (above zero).
 
     Keyword arguments:
@@ -329,7 +329,7 @@ def read_img_data(image, chan_lmbdas=None):
         return (image, img_chans_data)
 
 
-processes = multiprocessing.cpu_count() - 2  # // 2 or 1  # concurrent workers
+processes = multiprocessing.cpu_count() // 2 or 1  # concurrent workers
 
 
 # main program
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            path=r"/Users/christianrickert/Desktop/Polaris",
+            # path=r"/Users/christianrickert/Desktop/Polaris",
             # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
             pat="*.tif",
             anti="",
@@ -425,11 +425,8 @@ if __name__ == "__main__":
         rotation=90,
         fontsize="small",
     )
-    plt.ylim(bottom=0.0)
     plt.show()
-    """
 
-    """
     # channels chart
     data_lasts = []
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
@@ -452,9 +449,7 @@ if __name__ == "__main__":
     img_stderrs = []
     for img in images_img_data:
         img_means.append(get_mean(get_img_data(images_img_data, img, "sign_mean")))
-        img_stderrs.append(
-            get_mean(get_img_data(images_img_data, img, "sign_stderr"))
-        )
+        img_stderrs.append(get_mean(get_img_data(images_img_data, img, "sign_stderr")))
     data_lasts.append(img_means[-1])
     ax.errorbar(
         signal_labels,
