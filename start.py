@@ -25,11 +25,13 @@ def boxcox_transform(array, lmbda=None):
     array  -- the untransformed Numpy array
     lambda  -- the transformation parameter
     """
+    array = array[array > 0]
     if lmbda:
-        boxcox = sp.stats.boxcox(array[array > 0], lmbda=lmbda, alpha=None)
+        boxcox = sp.stats.boxcox(array, lmbda=lmbda, alpha=None)
         maxlog = None
     else:
-        boxcox, maxlog = sp.stats.boxcox(array[array > 0], lmbda=lmbda, alpha=None)
+        boxcox = np.array(0)
+        maxlog = sp.stats.boxcox_normmax(array, brack=(-0.25, 0.75), method="mle")
     return (boxcox, maxlog)
 
 
@@ -292,9 +294,8 @@ def read_img_data(image, chan_lmbdas=None):
             # prepare channel statistics
             if chan not in img_chans_data:
                 img_chans_data[chan] = {}
-            # get pixel data as flattend Numpy array, exclude all non-positive values
-            pixls = page.asarray().flatten()
-            pixls = pixls[pixls > 0.0]
+            # get pixel data as Numpy array
+            pixls = page.asarray()
             # power-transform data and get image statistics
             if chan_lmbdas:
                 # get date and time of acquisition
@@ -342,7 +343,7 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            # path=r"/Users/christianrickert/Desktop/Polaris",
+            path=r"C:\Users\Christian Rickert\Desktop\Polaris",
             # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
             pat="*.tif",
             anti="",
@@ -357,7 +358,8 @@ if __name__ == "__main__":
     except ValueError:
         print("Could not draw samples from experimental population.")
         sys.exit(1)
-    # analyze the sample
+
+    # analyze the sample data
     with multiprocessing.Pool(processes) as pool:
         sample_results = pool.starmap(read_img_data, sample_args)
         pool.close()  # wait for worker tasks to complete
@@ -427,7 +429,9 @@ if __name__ == "__main__":
         fontsize="small",
     )
     plt.show()
+    """
 
+    """
     # channels chart
     data_lasts = []
     signal_labels = [os.path.basename(image) for image in images_img_data.keys()]
