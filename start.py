@@ -292,9 +292,9 @@ def read_img_data(image, chan_lmbdas=None):
             # prepare channel statistics
             if chan not in img_chans_data:
                 img_chans_data[chan] = {}
-            # get pixel data as flattend Numpy array, remove all zeros
+            # get pixel data as flattend Numpy array, exclude all non-positive values
             pixls = page.asarray().flatten()
-            pixls = pixls[pixls != 0.0]
+            pixls = pixls[pixls > 0.0]
             # power-transform data and get image statistics
             if chan_lmbdas:
                 # get date and time of acquisition
