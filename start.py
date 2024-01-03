@@ -30,7 +30,7 @@ def boxcox_transform(array, lmbda=None):
         boxcox = sp.stats.boxcox(array, lmbda=lmbda, alpha=None)
         maxlog = None
     else:
-        boxcox = np.array(0)
+        boxcox = np.empty(0)
         maxlog = sp.stats.boxcox_normmax(array, brack=(-0.25, 0.75), method="mle")
     return (boxcox, maxlog)
 
@@ -174,7 +174,7 @@ def get_run_slice(array, index, slice_margin, slice_min=True):
     index  -- center position of the slice
     margin  -- element count before and after index
     """
-    slice = np.array(0)
+    slice = np.empty(0)
     if array.size > 0:
         slice = array[
             max(0, index - slice_margin) : min(index + slice_margin + 1, array.size)
