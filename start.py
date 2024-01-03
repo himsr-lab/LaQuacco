@@ -284,7 +284,8 @@ def read_img_data(image, chan_lmbdas=None):
     with tifffile.TiffFile(image) as tif:
         date_time = None
         series = tif.series
-        pages = series[0].shape[0]
+        pages, rows, columns = series[0].shape
+        pixls = np.empty((rows, columns))
         # access all pages of the first series
         for p, page in enumerate(tif.pages[0:pages]):
             # identify channel by name
