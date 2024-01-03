@@ -292,8 +292,9 @@ def read_img_data(image, chan_lmbdas=None):
             # prepare channel statistics
             if chan not in img_chans_data:
                 img_chans_data[chan] = {}
-            # get pixel data as flattend Numpy array
+            # get pixel data as flattend Numpy array, remove all zeros
             pixls = page.asarray().flatten()
+            pixls = pixls[pixls != 0.0]
             # power-transform data and get image statistics
             if chan_lmbdas:
                 # get date and time of acquisition
@@ -324,7 +325,7 @@ def read_img_data(image, chan_lmbdas=None):
                     img_chans_data[chan]["bckg_stderr"],
                 ) = get_stats(pixls[pixls < pixls_sign_min])
             else:  # lambda not yet determined
-                norms, chan_lmbda = boxcox_transform(pixls)
+                _, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
         return (image, img_chans_data)
 
