@@ -305,27 +305,27 @@ def read_img_data(image, chan_lmbdas=None):
                     date_time = img_chans_data["metadata"] = {"date_time": date_time}
                 # transform pixel data to be normally distributed
                 norms, _ = boxcox_transform(pixls, lmbda=chan_lmbdas[chan])
-                # identify background as outliers from normally distributed signal
+                # identify background as bottom outliers from normally distributed signal
                 boxplt_data = calculate_boxplot(norms)
-                norms_sign_min = boxplt_data["whiskers"][0].get_ydata()[1]
-                pixls_sign_min = sp.special.inv_boxcox(
-                    norms_sign_min, chan_lmbdas[chan]
+                norms_sign_thr = boxplt_data["whiskers"][0].get_ydata()[1]
+                pixls_sign_thr = sp.special.inv_boxcox(
+                    norms_sign_thr, chan_lmbdas[chan]
                 )
-                if np.isnan(pixls_sign_min):  # bottom whisker missing
-                    pixls_sign_min = 0.0
-                img_chans_data[chan]["sign_min"] = pixls_sign_min
+                if np.isnan(pixls_sign_thr):  # bottom whisker missing
+                    pixls_sign_thr = 0.0
+                img_chans_data[chan]["sign_thr"] = pixls_sign_thr
                 # get basic statistics for signal
                 (
                     img_chans_data[chan]["sign_mean"],
                     img_chans_data[chan]["sign_stdev"],
                     img_chans_data[chan]["sign_stderr"],
-                ) = get_stats(pixls[pixls >= pixls_sign_min])
+                ) = get_stats(pixls[pixls > pixls_sign_thr])
                 # get basic statistics for background
                 (
                     img_chans_data[chan]["bckg_mean"],
                     img_chans_data[chan]["bckg_stdev"],
                     img_chans_data[chan]["bckg_stderr"],
-                ) = get_stats(pixls[pixls < pixls_sign_min])
+                ) = get_stats(pixls[pixls <= pixls_sign_thr])
             else:  # lambda not yet determined
                 _, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
@@ -344,8 +344,8 @@ if __name__ == "__main__":
     # get a list of all image files
     files = sorted(
         get_files(
-            path=r"C:\Users\Christian Rickert\Desktop\Polaris",
-            # path=r"/Users/christianrickert/Desktop/MIBI/UCD158/raw",
+            # path=r"C:\Users\Christian Rickert\Desktop\Polaris",
+            path=r"C:\Users\Christian Rickert\Desktop\MIBI",
             pat="*.tif",
             anti="",
         ),
@@ -354,7 +354,7 @@ if __name__ == "__main__":
 
     # sample experimental image data
     try:
-        samples = sorted(get_samples(population=files, perc=100), key=str.lower)
+        samples = sorted(get_samples(population=files, perc=10), key=str.lower)
         sample_args = [(sample, None) for sample in samples]
     except ValueError:
         print("Could not draw samples from experimental population.")
