@@ -557,13 +557,6 @@ if __name__ == "__main__":
                 color="black",
                 alpha=alpha,
             )
-        plt.fill_between(
-            xs,
-            trend_stats["vals"] + 1.0 * trend_stats["stdevs"],
-            trend_stats["vals"] - 1.0 * trend_stats["stdevs"],
-            color="black",
-            alpha=0.2,
-        )
         plt.plot(trend_stats["vals"], color="black", linewidth=1, linestyle="solid")
         plt.plot(run_stats["means"], color="black", linewidth=1, linestyle="dashed")
         plt.errorbar(
