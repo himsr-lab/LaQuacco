@@ -146,17 +146,19 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_mean(array):
+def get_mean(array, size=None):
     """Returns the arithmetic mean.
-    Numpy produces a `RuntimeError` when all elements of the array
-    are `np.nan` values. Instead of returning an error, we return `np.nan`.
-
+    Numpy produces a `RuntimeWarning` when all elements of the array are
+    `np.nan` values. Let's just return `np.nan` without warning.
 
     Keyword arguments:
     array -- Numpy array
+    size -- number of valid observations
     """
     mean = np.nan
-    if array.size > 0 and not np.all(np.isnan(array)):
+    if not size:
+        size = np.count_nonzero(~np.isnan(array))
+    if size > 0:
         mean = np.nanmean(array)
     return mean
 
@@ -191,48 +193,61 @@ def get_samples(population=None, perc=100):
 
 
 def get_stats(array):
-    """Calculates basic statistics for the array.
+    """Calculates basic statistics for a 1-dimensional array.
 
     Keyword arguments:
     array -- Numpy array
     """
-    mean = get_mean(array)
-    stdev = get_stdev(array)
-    stderr = get_stderr(array)
-    return (mean, stdev, stderr)
+    stats = sp.stats.describe(array, ddof=1, nan_policy="omit")
+    mean = stats.mean
+    stdev = np.sqrt(stats.variance)
+    stderr = get_stderr(array, stats.nobs, mean)
+    min_max = (stats.minmax[0].data.item(), stats.minmax[1].data.item())
+    nobs = stats.nobs
+    return (mean, stdev, stderr, min_max, nobs)
 
 
-def get_stderr(array, mean=None, ddof=1):
+def get_stderr(array, size=None, mean=None, ddof=1):
     """Calculates the standard error of the arithmetic mean.
 
     Keyword arguments:
     array -- Numpy array
-    mean -- arithmetic mean of the samples
-    est -- number of estimated parameters, reduces degrees of freedom
+    size -- number of valid observations
+    mean -- arithmetic mean of the observations
+    ddof -- number of estimated parameters, reduces degrees of freedom
     """
     stderr = np.nan
-    if array.size:
+    if not size:
+        size = np.count_nonzero(~np.isnan(array))
+    if size > 0:
+        if not mean:
+            mean = get_mean(array, size)
         stderr = np.sqrt(
-            get_var(array, mean, ddof) / array.size
+            get_var(array, size, mean, ddof) / size
         )  # unreliability measure
     return stderr
 
 
-def get_stdev(array, mean=None, ddof=1):
+def get_stdev(array, size=None, mean=None, ddof=1):
     """Calculates the standard deviation.
 
     Keyword arguments:
     array -- Numpy array
-    mean -- arithmetic mean of the samples
-    est -- number of estimated parameters, reduces degrees of freedom
+    size -- number of valid observations
+    mean -- arithmetic mean of the observations
+    ddof -- number of estimated parameters, reduces degrees of freedom
     """
     stdev = np.nan
-    if array.size:
-        stdev = np.sqrt(get_var(array, mean, ddof))
+    if not size:
+        size = np.count_nonzero(~np.isnan(array))
+    if size > 0:
+        if not mean:
+            mean = get_mean(array, size)
+        stdev = np.sqrt(get_var(array, size, mean, ddof))
     return stdev
 
 
-def get_var(array, mean=None, ddof=1):
+def get_var(array, size=None, mean=None, ddof=1):
     """Calculates the variance - the variability of the data.
     If we have observed the whole population (all possible samples),
     then we would have as many degrees of freedom as observed samples.
@@ -241,15 +256,18 @@ def get_var(array, mean=None, ddof=1):
 
     Keyword arguments:
     array -- Numpy array
-    mean -- arithmetic mean of the samples
-    est -- number of estimated parameters, reduces degrees of freedom
+    size -- number of valid observations
+    mean -- arithmetic mean of the observations
+    ddof -- number of estimated parameters, reduces degrees of freedom
     """
     variance = np.nan
-    if array.size:
+    if not size:
+        size = np.count_nonzero(~np.isnan(array))
+    if size > 0:
         if not mean:
-            mean = get_mean(array)
+            mean = get_mean(array, size)
         sums_squared = np.nansum(np.power(array - mean, 2))
-        degrs_freedom = array.size - ddof
+        degrs_freedom = size - ddof
         if degrs_freedom > 0:
             variance = sums_squared / degrs_freedom
     return variance
