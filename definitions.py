@@ -15,19 +15,18 @@ def boxcox_transform(array, lmbda=None):
     """Power-transforms a Numpy array with the `numpy.stats.boxcox` function.
     If the value of `lambda` is not given (None), the fuction will determine
     the optimal value that maximizes the log-likelihood function.
-    The data needs to be positive (above zero).
+    The input data needs to be positive (above zero).
 
     Keyword arguments:
     array  -- the untransformed Numpy array
     lambda  -- the transformation parameter
     """
-    array = array[array > 0]
+    array = array[array > 0]  # mask areas without observations
     if lmbda:
         boxcox = sp.stats.boxcox(array, lmbda=lmbda, alpha=None)
         maxlog = None
     else:
-        boxcox = np.empty(0)
-        maxlog = sp.stats.boxcox_normmax(array, brack=(-0.25, 0.75), method="mle")
+        boxcox, maxlog = sp.stats.boxcox(array, lmbda=None, alpha=None)
     return (boxcox, maxlog)
 
 
@@ -282,7 +281,7 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def read_img_data(image, chan_lmbdas=None):
+def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
@@ -312,22 +311,13 @@ def read_img_data(image, chan_lmbdas=None):
             # get pixel data as Numpy array
             pixls = page.asarray()
             # power-transform data and get image statistics
-            if chan_lmbdas:
+            if chan_lmbdas and chan_thrlds:
                 # get date and time of acquisition
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
                     date_time = img_chans_data["metadata"] = {"date_time": date_time}
                 # transform pixel data to be normally distributed
                 norms, _ = boxcox_transform(pixls, lmbda=chan_lmbdas[chan])
-                # identify background as bottom outliers from normally distributed signal
-                boxplt_data = calculate_boxplot(norms)
-                norms_sign_thr = boxplt_data["whiskers"][0].get_ydata()[1]
-                pixls_sign_thr = sp.special.inv_boxcox(
-                    norms_sign_thr, chan_lmbdas[chan]
-                )
-                if np.isnan(pixls_sign_thr):  # bottom whisker missing
-                    pixls_sign_thr = 0.0
-                img_chans_data[chan]["sign_thr"] = pixls_sign_thr
                 # get basic statistics for signal
                 (
                     img_chans_data[chan]["sign_mean"],
@@ -335,8 +325,15 @@ def read_img_data(image, chan_lmbdas=None):
                     img_chans_data[chan]["sign_stderr"],
                     img_chans_data[chan]["sign_minmax"],
                     img_chans_data[chan]["sign_nobs"],
-                ) = get_stats(pixls[pixls > pixls_sign_thr])
-            else:  # lambda not yet determined
-                _, chan_lmbda = boxcox_transform(pixls)
-                img_chans_data[chan]["chan_lmbda"] = chan_lmbda
+                ) = get_stats(pixls[pixls > chan_thrs[chan]])
+            else:  # lambda and threshold not yet determined
+                norms, lmbda = boxcox_transform(pixls)
+                img_chans_data[chan]["chan_lmbda"] = lmbda
+                # identify background as bottom outliers from normally distributed signal
+                boxplt_data = calculate_boxplot(norms)
+                norms_sign_thr = boxplt_data["whiskers"][0].get_ydata()[1]
+                pixls_sign_thr = sp.special.inv_boxcox(norms_sign_thr, lmbda)
+                if np.isnan(pixls_sign_thr):  # bottom whisker missing
+                    pixls_sign_thr = 0.0
+                img_chans_data[chan]["chan_thrld"] = pixls_sign_thr
         return (image, img_chans_data)
