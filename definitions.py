@@ -45,27 +45,6 @@ def calculate_boxplot(array):
     return boxplt
 
 
-def get_files(path="", pat=None, anti=None, recurse=False):
-    """Iterate through all files in a directory structure and
-    return a list of matching files.
-
-    Keyword arguments:
-    path -- the path to a directory containing files (default "")
-    pat -- string pattern that needs to be part of the file name (default "None")
-    anti -- string pattern that may not be part of the file name (default "None")
-    recurse -- boolen that allows the function to work recursively (default "False")
-    """
-    FILES = []
-    for root, dirs, files in os.walk(path):
-        for file in files:
-            file = os.path.join(root, file)
-            if fnmatch.fnmatch(file, pat) and not fnmatch.fnmatch(file, anti):
-                FILES.append(file)
-        if not recurse:
-            break  # from `os.walk()`
-    return FILES
-
-
 def get_chan(page):
     """Get the channel name from a TIFF page.
 
@@ -121,6 +100,27 @@ def get_colormap(count):
             chans_stderrs[i] += images_img_data[image][chan]["sign_stderr"]
 
 
+def get_files(path="", pat=None, anti=None, recurse=False):
+    """Iterate through all files in a directory structure and
+    return a list of matching files.
+
+    Keyword arguments:
+    path -- the path to a directory containing files (default "")
+    pat -- string pattern that needs to be part of the file name (default "None")
+    anti -- string pattern that may not be part of the file name (default "None")
+    recurse -- boolen that allows the function to work recursively (default "False")
+    """
+    FILES = []
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            file = os.path.join(root, file)
+            if fnmatch.fnmatch(file, pat) and not fnmatch.fnmatch(file, anti):
+                FILES.append(file)
+        if not recurse:
+            break  # from `os.walk()`
+    return FILES
+
+
 def get_img_data(imgs_chans_data, img, data):
     """Returns image data from image data dictionaries.
     Works across all channels to retrieve the image data.
@@ -161,7 +161,7 @@ def get_mean(array):
     return mean
 
 
-def get_run_slice(array, index, slice_margin, slice_min=True):
+def get_run_slice(array, index, slice_margin):
     """Returns the slice of an array centered at the index
      with a margin of elements included before and after.
 
