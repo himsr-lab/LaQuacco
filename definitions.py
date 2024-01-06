@@ -201,7 +201,7 @@ def get_stats(array):
     mean = stats.mean
     stdev = np.sqrt(stats.variance)
     stderr = get_stderr(array, stats.nobs, mean)
-    minmax = (stats.minmax[0].data.item(), stats.minmax[1].data.item())
+    minmax = (stats.minmax[0], stats.minmax[1])
     nobs = stats.nobs
     return (mean, stdev, stderr, minmax, nobs)
 
@@ -289,10 +289,11 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
     """
     img_chans_data = dict()
     img_name = os.path.basename(image)
-    if chan_lmbdas:
-        print(f"\tIMAGE: {img_name}", flush=True)
+    sampled = chan_lmbdas and chan_thrlds
+    if sampled:
+        print(f"IMAGE: {img_name}", flush=True)
     else:
-        print(f"\tSAMPLE: {img_name}", flush=True)
+        print(f"SAMPLE: {img_name}", flush=True)
     # open TIFF file to extract image information
     with tifffile.TiffFile(image) as tif:
         date_time = None
@@ -310,8 +311,7 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
                 img_chans_data[chan] = {}
             # get pixel data as Numpy array
             pixls = page.asarray()
-            # power-transform data and get image statistics
-            if chan_lmbdas and chan_thrlds:
+            if sampled:
                 # get date and time of acquisition
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
@@ -325,8 +325,8 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
                     img_chans_data[chan]["sign_stderr"],
                     img_chans_data[chan]["sign_minmax"],
                     img_chans_data[chan]["sign_nobs"],
-                ) = get_stats(pixls[pixls > chan_thrs[chan]])
-            else:  # lambda and threshold not yet determined
+                ) = get_stats(pixls[pixls > chan_thrlds[chan]])
+            else:  # lambdas and thresholds not yet determined
                 norms, lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = lmbda
                 # identify background as bottom outliers from normally distributed signal
