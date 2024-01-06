@@ -202,9 +202,9 @@ def get_stats(array):
     mean = stats.mean
     stdev = np.sqrt(stats.variance)
     stderr = get_stderr(array, stats.nobs, mean)
-    min_max = (stats.minmax[0].data.item(), stats.minmax[1].data.item())
+    minmax = (stats.minmax[0].data.item(), stats.minmax[1].data.item())
     nobs = stats.nobs
-    return (mean, stdev, stderr, min_max, nobs)
+    return (mean, stdev, stderr, minmax, nobs)
 
 
 def get_stderr(array, size=None, mean=None, ddof=1):
@@ -333,13 +333,9 @@ def read_img_data(image, chan_lmbdas=None):
                     img_chans_data[chan]["sign_mean"],
                     img_chans_data[chan]["sign_stdev"],
                     img_chans_data[chan]["sign_stderr"],
+                    img_chans_data[chan]["sign_minmax"],
+                    img_chans_data[chan]["sign_nobs"],
                 ) = get_stats(pixls[pixls > pixls_sign_thr])
-                # get basic statistics for background
-                (
-                    img_chans_data[chan]["bckg_mean"],
-                    img_chans_data[chan]["bckg_stdev"],
-                    img_chans_data[chan]["bckg_stderr"],
-                ) = get_stats(pixls[pixls <= pixls_sign_thr])
             else:  # lambda not yet determined
                 _, chan_lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = chan_lmbda
