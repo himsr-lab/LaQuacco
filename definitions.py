@@ -21,7 +21,7 @@ def boxcox_transform(array, lmbda=None):
     array  -- the untransformed Numpy array
     lambda  -- the transformation parameter
     """
-    array = array[array > 0]  # mask areas without observations
+    array = array[array > 0.0]  # mask missing observations
     if lmbda:
         boxcox = sp.stats.boxcox(array, lmbda=lmbda, alpha=None)
         maxlog = None
