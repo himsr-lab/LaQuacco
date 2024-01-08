@@ -285,7 +285,8 @@ def read_img_data(image, chan_thrlds=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
-    images -- image file list
+    image -- image file
+    chan_thrlds -- list of channel thresholds
     """
     img_chans_data = dict()
     img_name = os.path.basename(image)
