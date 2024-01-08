@@ -281,7 +281,7 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
+def read_img_data(image, chan_thrlds=None):
     """Calculate the mean values and standard deviations for each of the image channels.
 
     Keyword arguments:
@@ -289,8 +289,7 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
     """
     img_chans_data = dict()
     img_name = os.path.basename(image)
-    sampled = chan_lmbdas and chan_thrlds
-    if sampled:
+    if chan_thrlds:
         print(f"IMAGE: {img_name}", flush=True)
     else:
         print(f"SAMPLE: {img_name}", flush=True)
@@ -311,13 +310,12 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
                 img_chans_data[chan] = {}
             # get pixel data as Numpy array
             pixls = page.asarray()
-            if sampled:
+            if chan_thrlds:  # analyze image
                 # get date and time of acquisition
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
                     date_time = img_chans_data["metadata"] = {"date_time": date_time}
-                # transform pixel data to be normally distributed
-                norms, _ = boxcox_transform(pixls, lmbda=chan_lmbdas[chan])
+                assert chan < len(chan_thrlds), "Missing signal threshold for channel."
                 # get basic statistics for signal
                 (
                     img_chans_data[chan]["sign_mean"],
@@ -326,7 +324,7 @@ def read_img_data(image, chan_lmbdas=None, chan_thrlds=None):
                     img_chans_data[chan]["sign_minmax"],
                     img_chans_data[chan]["sign_nobs"],
                 ) = get_stats(pixls[pixls > chan_thrlds[chan]])
-            else:  # lambdas and thresholds not yet determined
+            else:  # sample image
                 norms, lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = lmbda
                 # identify background as bottom outliers from normally distributed signal
