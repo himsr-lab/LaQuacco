@@ -84,6 +84,29 @@ def get_chan_data(imgs_chans_data, chan, data):
     return chan_data
 
 
+def get_chan_img(image, channel):
+    """Get the channel image from a TIFF page.
+
+    Keyword arguments:
+    image -- image file
+    channel -- channel name
+    """
+    pixls = np.array([])
+    with tifffile.TiffFile(image) as tif:
+        series = tif.series
+        pages, rows, columns = series[0].shape
+        pixls = np.empty((rows, columns))
+        # access all pages of the first series
+        for p, page in enumerate(tif.pages[0:pages]):
+            # identify channel by name
+            chan = get_chan(page)
+            if not chan:
+                chan = str(p)
+            if chan == channel:
+                pixls = page.asarray()
+    return pixls
+
+
 def get_colormap(count):
     """Return a colormap with `counts` number of colors.
 
