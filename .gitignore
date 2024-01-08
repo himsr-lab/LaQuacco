@@ -5,3 +5,4 @@ __pycache__/
 tags
 *.lock
 *.temp
+.DS_Store

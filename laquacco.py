@@ -315,7 +315,7 @@ def read_img_data(image, chan_thrlds=None):
                 if not date_time:
                     date_time = get_timestamp(page.tags["DateTime"].value)
                     date_time = img_chans_data["metadata"] = {"date_time": date_time}
-                assert chan < len(chan_thrlds), "Missing signal threshold for channel."
+                assert p < len(chan_thrlds), "Missing signal threshold for channel."
                 # get basic statistics for signal
                 (
                     img_chans_data[chan]["sign_mean"],
