@@ -406,4 +406,4 @@ def read_img_data(image, chan_thrlds=None):
                 if np.isnan(pixls_sign_thr):  # bottom whisker missing
                     pixls_sign_thr = 0.0
                 img_chans_data[chan]["chan_thrld"] = pixls_sign_thr
-        return (image, img_chans_data)
+    return (image, img_chans_data)
