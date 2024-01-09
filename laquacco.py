@@ -44,6 +44,53 @@ def calculate_boxplot(array):
     return boxplt
 
 
+def get_boxplots_stats(boxplots, channels=None, vertical=True):
+    """Get statistical values from boxplot objects.
+    Boxplot elements are accumulated as Line2D objects
+    in their corresponding element dictionaries.
+
+    Keyword arguments:
+    boxplot -- boxplot dictionary with lists of elements
+    channels -- channel labels used as dictionary keys
+    vertical -- boxplot orientation is vertical
+    """
+    boxplots_stats = {}
+    boxplots_len = len(boxplots["medians"])
+    channels_len = len(channels) if channels else 0
+    # iterate through boxplot elements
+    for box in range(0, boxplots_len):
+        if vertical:
+            q1, _, q3, *_ = boxplots["boxes"][box].get_ydata()
+            median, _ = boxplots["medians"][box].get_ydata()
+            _, w1 = boxplots["whiskers"][2 * box].get_ydata()
+            _, w3 = boxplots["whiskers"][2 * box + 1].get_ydata()
+            fliers = boxplots["fliers"][box].get_ydata()
+            mean, _ = (
+                boxplots["means"][box].get_ydata()
+                if box < len(boxplots["means"])
+                else (np.nan, None)
+            )
+        else:  # horizontal
+            q1, _, q3, *_ = boxplots["boxes"][box].get_xdata()
+            median, _ = boxplots["medians"][box].get_xdata()
+            _, w1 = boxplots["whiskers"][2 * box].get_xdata()
+            _, w3 = boxplots["whiskers"][2 * box + 1].get_xdata()
+            fliers = boxplots["fliers"][box].get_xdata()
+            mean, _ = (
+                boxplots["means"][box].get_xdata()
+                if box < len(boxplots["means"])
+                else (np.nan, None)
+            )
+        key = channels[box] if box < channels_len else box
+        boxplots_stats[key] = {}
+        boxplots_stats[key]["q1"], boxplots_stats[key]["q3"] = q1, q3
+        boxplots_stats[key]["median"] = median
+        boxplots_stats[key]["w1"], boxplots_stats[key]["w3"] = w1, w3
+        boxplots_stats[key]["fliers"] = list(fliers)
+        boxplots_stats[key]["mean"] = mean
+    return boxplots_stats
+
+
 def get_chan(page):
     """Get the channel name from a TIFF page.
 
@@ -351,9 +398,10 @@ def read_img_data(image, chan_thrlds=None):
             else:  # sample image
                 norms, lmbda = boxcox_transform(pixls)
                 img_chans_data[chan]["chan_lmbda"] = lmbda
-                # identify background as bottom outliers from normally distributed signal
-                boxplt_data = calculate_boxplot(norms)
-                norms_sign_thr = boxplt_data["whiskers"][0].get_ydata()[1]
+                # identify background as bottom boxplot outliers
+                boxplt = calculate_boxplot(norms)
+                boxplt_stats = get_boxplots_stats(boxplt)
+                norms_sign_thr = boxplt_stats[0]["w1"]
                 pixls_sign_thr = sp.special.inv_boxcox(norms_sign_thr, lmbda)
                 if np.isnan(pixls_sign_thr):  # bottom whisker missing
                     pixls_sign_thr = 0.0
