@@ -407,3 +407,47 @@ def read_img_data(image, chan_thrlds=None):
                     pixls_sign_thr = 0.0
                 img_chans_data[chan]["chan_thrld"] = pixls_sign_thr
     return (image, img_chans_data)
+
+
+def score_img_data(image, channels_minmax=None):
+    """Calculate the H-Scores of the image channels.
+
+    Keyword arguments:
+    image -- image file
+    channels_minmax -- dictionary with extrema tuples
+    """
+    img_chans_scores = dict()
+    img_name = os.path.basename(image)
+    print(f"SCORE: {img_name}", flush=True)
+    # open TIFF file to extract image information
+    with tifffile.TiffFile(image) as tif:
+        date_time = None
+        series = tif.series
+        pages, rows, columns = series[0].shape
+        pixls = np.empty((rows, columns))
+        # access all pages of the first series
+        for p, page in enumerate(tif.pages[0:pages]):
+            # identify channel by name
+            chan = laq.get_chan(page)
+            if not chan:
+                chan = str(p)
+            if chan not in img_chans_scores:
+                img_chans_scores[chan] = {}
+            # get pixel data as Numpy array
+            pixls = page.asarray()
+            if chan in channels_minmax:  # user-defined limits
+                min, max = channels_minmax[chan]
+            else:  # limits missing for current page
+                *_, (min, max), _ = laq.get_stats(pixls)
+            thrsld = min + 0.25 * (max - min)
+            pixls = pixls[pixls >= thrsld]  # ignore background
+            counts = [np.nan, np.nan, np.nan]
+            counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * max)])
+            counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * max)])
+            counts[1] = pixls.size - counts[0] - counts[2]
+            img_chans_scores[chan] = {
+                "score_1": 1.0 * counts[0] / pixls.size,  # max contribution: + 1
+                "score_2": 10.0 * counts[1] / pixls.size,  # max contribution: + 10
+                "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
+            }
+    return img_chans_scores
