@@ -428,7 +428,7 @@ def score_img_data(image, channels_minmax=None):
         # access all pages of the first series
         for p, page in enumerate(tif.pages[0:pages]):
             # identify channel by name
-            chan = laq.get_chan(page)
+            chan = get_chan(page)
             if not chan:
                 chan = str(p)
             if chan not in img_chans_scores:
@@ -438,12 +438,12 @@ def score_img_data(image, channels_minmax=None):
             if chan in channels_minmax:  # user-defined limits
                 min, max = channels_minmax[chan]
             else:  # limits missing for current page
-                *_, (min, max), _ = laq.get_stats(pixls)
-            thrsld = min + 0.25 * (max - min)
-            pixls = pixls[pixls >= thrsld]  # ignore background
+                *_, (min, max), _ = get_stats(pixls)
+            span = max - min
+            pixls = pixls[pixls >= (min + 0.25 * span)]  # ignore background
             counts = [np.nan, np.nan, np.nan]
-            counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * max)])
-            counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * max)])
+            counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * span)])
+            counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * span)])
             counts[1] = pixls.size - counts[0] - counts[2]
             img_chans_scores[chan] = {
                 "score_1": 1.0 * counts[0] / pixls.size,  # max contribution: + 1
