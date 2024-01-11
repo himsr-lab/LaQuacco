@@ -410,7 +410,7 @@ def read_img_data(image, chan_thrlds=None):
 
 
 def score_img_data(image, channels_minmax=None):
-    """Calculate the H-Scores of the image channels.
+    """Calculate the C-Scores of image channels.
 
     Keyword arguments:
     image -- image file
@@ -450,4 +450,4 @@ def score_img_data(image, channels_minmax=None):
                 "score_2": 10.0 * counts[1] / pixls.size,  # max contribution: + 10
                 "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
             }
-    return img_chans_scores
+    return (image, img_chans_scores)
