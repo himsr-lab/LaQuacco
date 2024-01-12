@@ -11,25 +11,6 @@ import numpy as np
 import scipy as sp
 
 
-def boxcox_transform(array, lmbda=None):
-    """Power-transforms a Numpy array with the `numpy.stats.boxcox` function.
-    If the value of `lambda` is not given (None), the fuction will determine
-    the optimal value that maximizes the log-likelihood function.
-    The input data needs to be positive (above zero).
-
-    Keyword arguments:
-    array  -- the untransformed Numpy array
-    lambda  -- the transformation parameter
-    """
-    array = array[array > 0.0]  # mask missing observations
-    if lmbda:
-        boxcox = sp.stats.boxcox(array, lmbda=lmbda, alpha=None)
-        maxlog = None
-    else:
-        boxcox, maxlog = sp.stats.boxcox(array, lmbda=None, alpha=None)
-    return (boxcox, maxlog)
-
-
 def calculate_boxplot(array):
     """Calculate the data for a Matplolib boxplot and
     immediately close the corresponding plot window:
@@ -131,26 +112,19 @@ def get_chan_data(imgs_chans_data, chan, data):
     return chan_data
 
 
-def get_chan_img(image, channel):
-    """Get the channel image from a TIFF page.
+def get_chan_img(tiff, channel):
+    """Get the channel image from a TIFF dictionary.
 
     Keyword arguments:
-    image -- image file
+    tiff -- TIFF dictionary
     channel -- channel name
     """
-    pixls = np.array([])
-    with tifffile.TiffFile(image) as tif:
-        series = tif.series
-        pages, rows, columns = series[0].shape
-        pixls = np.empty((rows, columns))
-        # access all pages of the first series
-        for p, page in enumerate(tif.pages[0:pages]):
-            # identify channel by name
-            chan = get_chan(page)
-            if not chan:
-                chan = str(p)
-            if chan == channel:
-                pixls = page.asarray()
+    pixls = np.zeros((tiff["shape"][1:]))  # pre-allocate
+    for page in tiff["pages"]:
+        chan = get_chan(page)
+        if chan == channel:
+            pixls = page.asarray()
+    tiff["tiff"].close()
     return pixls
 
 
@@ -267,6 +241,7 @@ def get_stats(array):
     Keyword arguments:
     array -- Numpy array
     """
+    array = array.ravel()  # flatten before use (copy only if needed)
     stats = sp.stats.describe(array, ddof=1, nan_policy="omit")
     mean = stats.mean
     stdev = np.sqrt(stats.variance)
@@ -316,6 +291,38 @@ def get_stdev(array, size=None, mean=None, ddof=1):
     return stdev
 
 
+def get_tiff(image):
+    """Open the TIFF file object and return its hanlde
+    plus additional information about the first series
+    as a descriptive TIFF dictionary.
+    Don't forget to close the file after using it!
+
+    Keyword arguments:
+    image -- image file
+    """
+    # open TIFF file and keep handle open for later use
+    tiff = tifffile.TiffFile(image)
+    series = tiff.series  # descreasing resolutions
+    shape = series[0].shape
+    pages = tiff.pages[0 : shape[0]]
+    channels = []
+    # access all pages of the first series
+    for p, page in enumerate(pages):
+        # identify channel by name
+        chan = get_chan(page)
+        # or: by page count
+        if not chan:
+            chan = str(p)
+        channels.append(chan)
+    return {
+        "tiff": tiff,
+        "image": image,
+        "shape": shape,
+        "pages": pages,
+        "channels": channels,
+    }
+
+
 def get_var(array, size=None, mean=None, ddof=1):
     """Calculates the variance - the variability of the data.
     If we have observed the whole population (all possible samples),
@@ -351,103 +358,67 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def read_img_data(image, chan_thrlds=None):
-    """Calculate the mean values and standard deviations for each of the image channels.
-
-    Keyword arguments:
-    image -- image file
-    chan_thrlds -- list of channel thresholds
-    """
-    img_chans_data = dict()
-    img_name = os.path.basename(image)
-    if chan_thrlds:
-        print(f"IMAGE: {img_name}", flush=True)
-    else:
-        print(f"SAMPLE: {img_name}", flush=True)
-    # open TIFF file to extract image information
-    with tifffile.TiffFile(image) as tif:
-        date_time = None
-        series = tif.series
-        pages, rows, columns = series[0].shape
-        pixls = np.empty((rows, columns))
-        # access all pages of the first series
-        for p, page in enumerate(tif.pages[0:pages]):
-            # identify channel by name
-            chan = get_chan(page)
-            if not chan:
-                chan = str(p)
-            # prepare channel statistics
-            if chan not in img_chans_data:
-                img_chans_data[chan] = {}
-            # get pixel data as Numpy array
-            pixls = page.asarray()
-            if chan_thrlds:  # analyze image
-                # get date and time of acquisition
-                if not date_time:
-                    date_time = get_timestamp(page.tags["DateTime"].value)
-                    date_time = img_chans_data["metadata"] = {"date_time": date_time}
-                assert p < len(chan_thrlds), "Missing signal threshold for channel."
-                # get basic statistics for signal
-                (
-                    img_chans_data[chan]["sign_mean"],
-                    img_chans_data[chan]["sign_stdev"],
-                    img_chans_data[chan]["sign_stderr"],
-                    img_chans_data[chan]["sign_minmax"],
-                    img_chans_data[chan]["sign_nobs"],
-                ) = get_stats(pixls[pixls > chan_thrlds[chan]])
-            else:  # sample image
-                norms, lmbda = boxcox_transform(pixls)
-                img_chans_data[chan]["chan_lmbda"] = lmbda
-                # identify background as bottom boxplot outliers
-                boxplt = calculate_boxplot(norms)
-                boxplt_stats = get_boxplots_stats(boxplt)
-                norms_sign_thr = boxplt_stats[0]["w1"]
-                pixls_sign_thr = sp.special.inv_boxcox(norms_sign_thr, lmbda)
-                if np.isnan(pixls_sign_thr):  # bottom whisker missing
-                    pixls_sign_thr = 0.0
-                img_chans_data[chan]["chan_thrld"] = pixls_sign_thr
-    return (image, img_chans_data)
-
-
-def score_img_data(image, channels_minmax=None):
+def score_img_data(tiff, chan_minmax=None):
     """Calculate the C-Scores of image channels.
 
     Keyword arguments:
-    image -- image file
-    channels_minmax -- dictionary with extrema tuples
+    tiff -- TIFF dictionary
+    chan_minmax -- dictionary with extrema tuples
     """
     img_chans_scores = dict()
-    img_name = os.path.basename(image)
+    img_name = os.path.basename(tiff["image"])
     print(f"SCORE: {img_name}", flush=True)
-    # open TIFF file to extract image information
-    with tifffile.TiffFile(image) as tif:
-        date_time = None
-        series = tif.series
-        pages, rows, columns = series[0].shape
-        pixls = np.empty((rows, columns))
-        # access all pages of the first series
-        for p, page in enumerate(tif.pages[0:pages]):
-            # identify channel by name
-            chan = get_chan(page)
-            if not chan:
-                chan = str(p)
-            if chan not in img_chans_scores:
-                img_chans_scores[chan] = {}
-            # get pixel data as Numpy array
-            pixls = page.asarray()
-            if chan in channels_minmax:  # user-defined limits
-                min, max = channels_minmax[chan]
-            else:  # limits missing for current page
-                *_, (min, max), _ = get_stats(pixls)
-            span = max - min
-            pixls = pixls[pixls >= (min + 0.25 * span)]  # ignore background
-            counts = [np.nan, np.nan, np.nan]
-            counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * span)])
-            counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * span)])
-            counts[1] = pixls.size - counts[0] - counts[2]
-            img_chans_scores[chan] = {
-                "score_1": 1.0 * counts[0] / pixls.size,  # max contribution: + 1
-                "score_2": 10.0 * counts[1] / pixls.size,  # max contribution: + 10
-                "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
-            }
+    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
+    for page, chan in zip(tiff["pages"], tiff["channels"]):
+        pixls = page.asarray()
+        if chan_minmax and chan in channels_minmax:  # user-defined
+            min, max = channels_minmax[chan]
+        else:  # set automatically
+            *_, (min, max), _ = get_stats(pixls.ravel())
+        span = max - min
+        pixls = pixls[pixls >= (min + 0.25 * span)]  # ignore background
+        counts = [np.nan, np.nan, np.nan]
+        counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * span)])
+        counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * span)])
+        counts[1] = pixls.size - counts[0] - counts[2]
+        img_chans_scores[chan] = {
+            "score_1": 1.0 * counts[0] / pixls.size,  # max contribution: + 1
+            "score_2": 10.0 * counts[1] / pixls.size,  # max contribution: + 10
+            "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
+        }
+    tiff["tiff"].close()
     return (image, img_chans_scores)
+
+
+def stats_img_data(tiff, chan_thrlds=None):
+    """Calculate the mean values and standard deviations for each of the image channels.
+
+    Keyword arguments:
+    tiff -- TIFF dictionary
+    chan_thrlds -- list of channel thresholds
+    """
+    img_chans_data = dict()
+    img_name = os.path.basename(tiff["image"])
+    print(f"IMAGE: {img_name}", flush=True)
+    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
+    for page, chan in zip(tiff["pages"], tiff["channels"]):
+        pixls = page.asarray()
+        # get date and time of acquisition
+        img_chans_data["metadata"] = {
+            "date_time": get_timestamp(page.tags["DateTime"].value)
+        }
+        if chan_thrlds and chan in chan_thrlds:  # user-defined
+            thrld = chan_thrlds[chan]
+        else:  # set automatically
+            thrld = 0.0
+        # get basic statistics for signal
+        img_chans_data[chan] = {}
+        (
+            img_chans_data[chan]["sign_mean"],
+            img_chans_data[chan]["sign_stdev"],
+            img_chans_data[chan]["sign_stderr"],
+            img_chans_data[chan]["sign_minmax"],
+            img_chans_data[chan]["sign_nobs"],
+        ) = get_stats(pixls[pixls > thrld])
+    tiff["tiff"].close()
+    return (image, img_chans_data)
