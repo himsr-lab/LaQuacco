@@ -241,14 +241,20 @@ def get_stats(array):
     Keyword arguments:
     array -- Numpy array
     """
-    array = array.ravel()  # flatten before use (copy only if needed)
-    stats = sp.stats.describe(array, ddof=1, nan_policy="omit")
+    narray = array[~np.isnan(array)]  # ignore all `np.nan` values
+    sarray = np.ndarray.sort(narray.ravel())  # flatten and sort in-place
+    stats = sp.stats.describe(sarray, ddof=1)
     mean = stats.mean
-    stdev = np.sqrt(stats.variance)
-    stderr = get_stderr(array, stats.nobs, mean)
-    minmax = (stats.minmax[0], stats.minmax[1])
     nobs = stats.nobs
-    return (mean, stdev, stderr, minmax, nobs)
+    center = nobs // 2  # index
+    middle = sarray[center]  # value
+    median = middle if nobs % 2 else (sarray[center - 1] + middle) / 2.0
+    stdev = np.sqrt(stats.variance)
+    stderr = get_stderr(sarray, nobs, mean)
+    pindex = math.ceil(nobs / 100.0)  # slice representing 1%
+    bottop = (np.mean(sarray[:pindex]), np.mean(sarray[-pindex:]))
+    minmax = (stats.minmax[0], stats.minmax[1])
+    return (mean, median, stdev, stderr, minmax, bottop, nobs)
 
 
 def get_stderr(array, size=None, mean=None, ddof=1):
@@ -358,12 +364,12 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def score_img_data(tiff, chan_minmax=None):
+def score_img_data(tiff, chans_minmax=None):
     """Calculate the C-Scores of image channels.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chan_minmax -- dictionary with extrema tuples
+    chans_minmax -- dictionary with extrema tuples
     """
     img_chans_scores = dict()
     img_name = os.path.basename(tiff["image"])
@@ -371,8 +377,8 @@ def score_img_data(tiff, chan_minmax=None):
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         pixls = page.asarray()
-        if chan_minmax and chan in channels_minmax:  # user-defined
-            min, max = channels_minmax[chan]
+        if chans_minmax and chan in chans_minmax:  # user-defined
+            min, max = chans_minmax[chan]
         else:  # set automatically
             *_, (min, max), _ = get_stats(pixls.ravel())
         span = max - min
@@ -387,7 +393,7 @@ def score_img_data(tiff, chan_minmax=None):
             "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
         }
     tiff["tiff"].close()
-    return (image, img_chans_scores)
+    return img_chans_scores
 
 
 def stats_img_data(tiff, chan_thrlds=None):
@@ -409,7 +415,7 @@ def stats_img_data(tiff, chan_thrlds=None):
         }
         if chan_thrlds and chan in chan_thrlds:  # user-defined
             thrld = chan_thrlds[chan]
-        else:  # set automatically
+        else:  # set manually
             thrld = 0.0
         # get basic statistics for signal
         img_chans_data[chan] = {}
@@ -421,4 +427,4 @@ def stats_img_data(tiff, chan_thrlds=None):
             img_chans_data[chan]["sign_nobs"],
         ) = get_stats(pixls[pixls > thrld])
     tiff["tiff"].close()
-    return (image, img_chans_data)
+    return img_chans_data
