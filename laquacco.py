@@ -343,10 +343,12 @@ def get_timestamp(timestamp):
 
 def score_img_data(tiff, chans_minmax=None):
     """Calculate the C-Scores of image channels.
+    The algorithm is similar to an H-Score but scores the different
+    intenisty classes with the factors 1, 10, and 10, respectively.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chans_minmax -- dictionary with extrema tuples
+    chans_minmax -- dictionary with percentile tuples
     """
     img_chans_scores = dict()
     img_name = os.path.basename(tiff["image"])
@@ -354,10 +356,11 @@ def score_img_data(tiff, chans_minmax=None):
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
-        if chans_minmax and chan in chans_minmax:  # user-defined
-            min, max = chans_minmax[chan]
-        else:  # set automatically
-            *_, (min, max), _ = get_stats(pixls.ravel())
+        bot, top = (
+            chans_minmax[chan]
+            if chans_minmax and chan in chan_minmax  # user-defined
+            else (get_min(pixls), get_max(pixls))  # automatic
+        )
         span = max - min
         signal = pixls[pixls >= (min + 0.25 * span)]  # ignore background
         size = signal.size
@@ -374,16 +377,16 @@ def score_img_data(tiff, chans_minmax=None):
     return img_chans_scores
 
 
-def stats_img_data(tiff, chan_thrlds=None):
+def stats_img_data(tiff, chan_mins=None):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chan_thrlds -- list of channel thresholds
+    chan_mins -- dictionary with minimum signal values
     """
     img_chans_data = dict()
     img_name = os.path.basename(tiff["image"])
-    if chan_thrlds:
+    if chan_mins:
         print(f"IMAGE: {img_name}", flush=True)
     else:
         print(f"SAMPLE: {img_name}", flush=True)
@@ -394,11 +397,11 @@ def stats_img_data(tiff, chan_thrlds=None):
         img_chans_data["metadata"] = {
             "date_time": get_timestamp(page.tags["DateTime"].value)
         }
-        thrld = chan_thrlds[chan] if chan_thrlds and chan in chan_thrlds else 0.0
+        thrld = chan_mins[chan] if chan_mins and chan in chan_mins else 0.0
         signal = pixls[pixls > thrld]  # ignore background
         # get statistics for channel
         img_chans_data[chan] = {}
-        if chan_thrlds:
+        if chan_mins:
             mean = get_mean(signal)
             img_chans_data[chan]["mean"] = mean
             img_chans_data[chan]["stdev"] = get_stdev(signal, mean)
