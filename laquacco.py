@@ -190,6 +190,21 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
+def get_max(array):
+    """Returns the maximum value.
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    maximum = np.nan
+    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
+    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = frame["pixls"]
+    if len(pixls) > 0:
+        maximum = pixls.max()
+    return maximum
+
+
 def get_mean(array):
     """Returns the arithmetic mean.
 
@@ -203,6 +218,21 @@ def get_mean(array):
     if len(pixls) > 0:
         mean = pixls.mean()
     return mean
+
+
+def get_min(array):
+    """Returns the maximum value.
+
+    Keyword arguments:
+    array -- Numpy array
+    """
+    minimum = np.nan
+    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
+    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = frame["pixls"]
+    if len(pixls) > 0:
+        minimum = pixls.min()
+    return minimum
 
 
 def get_run_slice(array, index, slice_margin):
@@ -419,6 +449,7 @@ def stats_img_data(tiff, chan_thrlds=None):
             img_chans_data[chan]["mean"] = mean
             img_chans_data[chan]["stdev"] = get_stdev(pixls, mean)
             img_chans_data[chan]["stderr"] = get_stderr(pixls, mean)
+            img_chans_data[chan]["minmax"] = (get_min(pixls), get_max(pixls))
         else:
             (
                 img_chans_data[chan]["count"],
