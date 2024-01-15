@@ -26,53 +26,6 @@ def calculate_boxplot(array):
     return boxplt
 
 
-def get_boxplots_stats(boxplots, channels=None, vertical=True):
-    """Get statistical values from boxplot objects.
-    Boxplot elements are accumulated as Line2D objects
-    in their corresponding element dictionaries.
-
-    Keyword arguments:
-    boxplot -- boxplot dictionary with lists of elements
-    channels -- channel labels used as dictionary keys
-    vertical -- boxplot orientation is vertical
-    """
-    boxplots_stats = {}
-    boxplots_len = len(boxplots["medians"])
-    channels_len = len(channels) if channels else 0
-    # iterate through boxplot elements
-    for box in range(0, boxplots_len):
-        if vertical:
-            q1, _, q3, *_ = boxplots["boxes"][box].get_ydata()
-            median, _ = boxplots["medians"][box].get_ydata()
-            _, w1 = boxplots["whiskers"][2 * box].get_ydata()
-            _, w3 = boxplots["whiskers"][2 * box + 1].get_ydata()
-            fliers = boxplots["fliers"][box].get_ydata()
-            mean, _ = (
-                boxplots["means"][box].get_ydata()
-                if box < len(boxplots["means"])
-                else (np.nan, None)
-            )
-        else:  # horizontal
-            q1, _, q3, *_ = boxplots["boxes"][box].get_xdata()
-            median, _ = boxplots["medians"][box].get_xdata()
-            _, w1 = boxplots["whiskers"][2 * box].get_xdata()
-            _, w3 = boxplots["whiskers"][2 * box + 1].get_xdata()
-            fliers = boxplots["fliers"][box].get_xdata()
-            mean, _ = (
-                boxplots["means"][box].get_xdata()
-                if box < len(boxplots["means"])
-                else (np.nan, None)
-            )
-        key = channels[box] if box < channels_len else box
-        boxplots_stats[key] = {}
-        boxplots_stats[key]["q1"], boxplots_stats[key]["q3"] = q1, q3
-        boxplots_stats[key]["median"] = median
-        boxplots_stats[key]["w1"], boxplots_stats[key]["w3"] = w1, w3
-        boxplots_stats[key]["fliers"] = list(fliers)
-        boxplots_stats[key]["mean"] = mean
-    return boxplots_stats
-
-
 def get_chan(page):
     """Get the channel name from a TIFF page.
 
@@ -124,7 +77,7 @@ def get_chan_img(tiff, channel):
     for page in tiff["pages"]:
         chan = get_chan(page)
         if chan == channel:
-            pixls = page.asarray()
+            page.asarray(out=pixls)  # in-place
     tiff["tiff"].close()
     return pixls
 
@@ -400,21 +353,22 @@ def score_img_data(tiff, chans_minmax=None):
     print(f"SCORE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
-        pixls = page.asarray()
+        page.asarray(out=pixls)  # in-place
         if chans_minmax and chan in chans_minmax:  # user-defined
             min, max = chans_minmax[chan]
         else:  # set automatically
             *_, (min, max), _ = get_stats(pixls.ravel())
         span = max - min
-        pixls = pixls[pixls >= (min + 0.25 * span)]  # ignore background
+        signal = pixls[pixls >= (min + 0.25 * span)]  # ignore background
+        size = signal.size
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = np.count_nonzero(pixls[pixls < (min + 0.50 * span)])
-        counts[2] = np.count_nonzero(pixls[pixls >= (min + 0.75 * span)])
-        counts[1] = pixls.size - counts[0] - counts[2]
+        counts[0] = np.count_nonzero(signal[signal < (min + 0.50 * span)])
+        counts[2] = np.count_nonzero(signal[signal >= (min + 0.75 * span)])
+        counts[1] = size - counts[0] - counts[2]
         img_chans_scores[chan] = {
-            "score_1": 1.0 * counts[0] / pixls.size,  # max contribution: + 1
-            "score_2": 10.0 * counts[1] / pixls.size,  # max contribution: + 10
-            "score_3": 100.0 * counts[2] / pixls.size,  # max contribution: + 100
+            "score_1": 1.0 * counts[0] / size,  # max contribution: + 1
+            "score_2": 10.0 * counts[1] / size,  # max contribution: + 10
+            "score_3": 100.0 * counts[2] / size,  # max contribution: + 100
         }
     tiff["tiff"].close()
     return img_chans_scores
@@ -435,21 +389,24 @@ def stats_img_data(tiff, chan_thrlds=None):
         print(f"SAMPLE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
-        pixls = page.asarray()
+        page.asarray(out=pixls)  # in-place
         # get date and time of acquisition
         img_chans_data["metadata"] = {
             "date_time": get_timestamp(page.tags["DateTime"].value)
         }
         thrld = chan_thrlds[chan] if chan_thrlds and chan in chan_thrlds else 0.0
-        pixls = pixls[pixls > thrld]
+        signal = pixls[pixls > thrld]  # ignore background
         # get statistics for channel
         img_chans_data[chan] = {}
         if chan_thrlds:
-            mean = get_mean(pixls)
+            mean = get_mean(signal)
             img_chans_data[chan]["mean"] = mean
-            img_chans_data[chan]["stdev"] = get_stdev(pixls, mean)
-            img_chans_data[chan]["stderr"] = get_stderr(pixls, mean)
-            img_chans_data[chan]["minmax"] = (get_min(pixls), get_max(pixls))
+            img_chans_data[chan]["stdev"] = get_stdev(signal, mean)
+            img_chans_data[chan]["stderr"] = get_stderr(signal, mean)
+            img_chans_data[chan]["minmax"] = (
+                get_min(signal),
+                get_max(signal),
+            )
         else:
             (
                 img_chans_data[chan]["count"],
@@ -459,6 +416,6 @@ def stats_img_data(tiff, chan_thrlds=None):
                 img_chans_data[chan]["median"],
                 img_chans_data[chan]["minmax"],
                 img_chans_data[chan]["bottop"],
-            ) = get_stats(pixls[pixls > thrld])
+            ) = get_stats(signal)
     tiff["tiff"].close()
     return img_chans_data
