@@ -391,7 +391,7 @@ def score_img_data(tiff, chans_minmax=None):
 
 
 def stats_img_data(tiff, chan_thrlds=None):
-    """Calculate the mean values and standard deviations for each of the image channels.
+    """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     tiff -- TIFF dictionary
