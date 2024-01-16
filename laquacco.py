@@ -9,7 +9,6 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import scipy as sp
 
 
 def calculate_boxplot(array):
@@ -62,7 +61,7 @@ def get_chan_data(imgs_chans_data, chan, data):
             chan_data.append(None)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
-    chan_data[chan_data == None] = np.nan
+    chan_data[chan_data is None] = np.nan
     return chan_data
 
 
@@ -90,11 +89,6 @@ def get_colormap(count):
     """
     color_points = np.linspace(0, 1, count)
     return [cm.hsv(color_point) for color_point in color_points]
-
-    for i, image in enumerate(images_img_data):
-        for chan in chans:
-            chans_means[i] += images_img_data[image][chan]["mean"]
-            chans_stderrs[i] += images_img_data[image][chan]["stderr"]
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -139,7 +133,7 @@ def get_img_data(imgs_chans_data, img, data):
         img_data = None
     # convert to Numpy array, keep Python datatype
     img_data = np.array(img_data, dtype="float")
-    img_data[img_data == None] = np.nan
+    img_data[img_data is None] = np.nan
     return img_data
 
 
@@ -351,7 +345,6 @@ def score_img_data(tiff, chan_minmax=None):
     chan_minmax -- dictionary with percentile tuples
     """
     img_chans_scores = dict()
-    img_name = os.path.basename(tiff["image"])
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
@@ -384,7 +377,6 @@ def stats_img_data(tiff, chan_mins=None):
     chan_mins -- dictionary with minimum signal values
     """
     img_chans_data = dict()
-    img_name = os.path.basename(tiff["image"])
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
