@@ -341,14 +341,14 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def score_img_data(tiff, chans_minmax=None):
+def score_img_data(tiff, chan_minmax=None):
     """Calculate the C-Scores of image channels.
     The algorithm is similar to an H-Score but scores the different
     intenisty classes with the factors 1, 10, and 10, respectively.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chans_minmax -- dictionary with percentile tuples
+    chan_minmax -- dictionary with percentile tuples
     """
     img_chans_scores = dict()
     img_name = os.path.basename(tiff["image"])
@@ -357,16 +357,16 @@ def score_img_data(tiff, chans_minmax=None):
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
         bot, top = (
-            chans_minmax[chan]
-            if chans_minmax and chan in chan_minmax  # user-defined
+            chan_minmax[chan]
+            if chan_minmax and chan in chan_minmax  # user-defined
             else (get_min(pixls), get_max(pixls))  # automatic
         )
-        span = max - min
-        signal = pixls[pixls >= (min + 0.25 * span)]  # ignore background
+        span = top - bot
+        signal = pixls[pixls >= (bot + 0.25 * span)]  # ignore background
         size = signal.size
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = np.count_nonzero(signal[signal < (min + 0.50 * span)])
-        counts[2] = np.count_nonzero(signal[signal >= (min + 0.75 * span)])
+        counts[0] = np.count_nonzero(signal[signal < (bot + 0.50 * span)])
+        counts[2] = np.count_nonzero(signal[signal >= (bot + 0.75 * span)])
         counts[1] = size - counts[0] - counts[2]
         img_chans_scores[chan] = {
             "score_1": 1.0 * counts[0] / size,  # max contribution: + 1
