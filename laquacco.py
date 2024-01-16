@@ -352,7 +352,6 @@ def score_img_data(tiff, chan_minmax=None):
     """
     img_chans_scores = dict()
     img_name = os.path.basename(tiff["image"])
-    print(f"SCORE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
@@ -386,10 +385,6 @@ def stats_img_data(tiff, chan_mins=None):
     """
     img_chans_data = dict()
     img_name = os.path.basename(tiff["image"])
-    if chan_mins:
-        print(f"IMAGE: {img_name}", flush=True)
-    else:
-        print(f"SAMPLE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
