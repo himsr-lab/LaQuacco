@@ -219,17 +219,17 @@ def get_stats(array):
     """
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
     df = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    dscr = df.describe(percentiles=(0.1, 0.5, 0.9))  # sort data only once
+    dscr = df.describe(percentiles=(0.01, 0.5, 0.99))  # sort data only once
     count = dscr.filter([pl.col("describe") == "count"])["pixls"][0]
     mean = dscr.filter([pl.col("describe") == "mean"])["pixls"][0]
     stdev = dscr.filter([pl.col("describe") == "std"])["pixls"][0]
     stderr = np.power(stdev, 2) / count
     minimum = dscr.filter([pl.col("describe") == "min"])["pixls"][0]
-    perc10 = dscr.filter([pl.col("describe") == "10%"])["pixls"][0]
+    bot = dscr.filter([pl.col("describe") == "1%"])["pixls"][0]
     median = dscr.filter([pl.col("describe") == "50%"])["pixls"][0]
-    perc90 = dscr.filter([pl.col("describe") == "90%"])["pixls"][0]
+    top = dscr.filter([pl.col("describe") == "99%"])["pixls"][0]
     maximum = dscr.filter([pl.col("describe") == "max"])["pixls"][0]
-    return (count, mean, stdev, stderr, median, (minimum, maximum), (perc10, perc90))
+    return (count, mean, stdev, stderr, median, (minimum, maximum), (bot, top))
 
 
 def get_stderr(array, mean=None, ddof=1):
