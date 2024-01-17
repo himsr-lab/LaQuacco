@@ -311,7 +311,7 @@ def get_tiff(image):
 
 def get_time_left(start=None, current=None, total=None):
     """Return a time in seconds representing the remainder based on
-    the durations of the previous iterations. Rought estimate.
+    the durations of the previous iterations (rough estimate).
 
     Keyword arguments:
     start  -- start time from call to `time.time()`
