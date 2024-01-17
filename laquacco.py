@@ -4,6 +4,7 @@ import math
 import os
 import random
 import tifffile
+import time
 import xmltodict
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
@@ -308,6 +309,28 @@ def get_tiff(image):
     }
 
 
+def get_time_left(start=None, current=None, total=None):
+    """Return a time in seconds representing the remainder based on
+    the durations of the previous iterations. Rought estimate.
+
+    Keyword arguments:
+    start  -- start time from call to `time.time()`
+    current  -- current iteration (positive)
+    total -- total iterations
+    """
+    time_left = None
+    now = time.time()
+    if now > start:
+        if current:
+            if current < total:
+                time_per_iter = (now - start) / current
+                iter_left = total - current
+                time_left = iter_left * time_per_iter
+            else:
+                time_left = 0.0
+    return time_left
+
+
 def get_var(array, mean=None, ddof=1):
     """Calculates the variance - the variability of the data.
     If we have observed the whole population (all possible samples),
@@ -351,22 +374,20 @@ def score_img_data(tiff, chans_minmax=None):
     chans_minmax -- dictionary with percentile tuples
     """
     img_chans_scores = dict()
-    img_name = os.path.basename(tiff["image"])
-    print(f"SCORE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
         bot, top = (
             chans_minmax[chan]
-            if chans_minmax and chan in chan_minmax  # user-defined
+            if chans_minmax and chan in chans_minmax  # user-defined
             else (get_min(pixls), get_max(pixls))  # automatic
         )
-        span = max - min
-        signal = pixls[pixls >= (min + 0.25 * span)]  # ignore background
+        span = top - bot
+        signal = pixls[pixls >= (bot + 0.25 * span)]  # ignore background
         size = signal.size
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = np.count_nonzero(signal[signal < (min + 0.50 * span)])
-        counts[2] = np.count_nonzero(signal[signal >= (min + 0.75 * span)])
+        counts[0] = np.count_nonzero(signal[signal < (bot + 0.50 * span)])
+        counts[2] = np.count_nonzero(signal[signal >= (bot + 0.75 * span)])
         counts[1] = size - counts[0] - counts[2]
         img_chans_scores[chan] = {
             "score_1": 1.0 * counts[0] / size,  # max contribution: + 1
@@ -385,11 +406,6 @@ def stats_img_data(tiff, chan_mins=None):
     chan_mins -- dictionary with minimum signal values
     """
     img_chans_data = dict()
-    img_name = os.path.basename(tiff["image"])
-    if chan_mins:
-        print(f"IMAGE: {img_name}", flush=True)
-    else:
-        print(f"SAMPLE: {img_name}", flush=True)
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
