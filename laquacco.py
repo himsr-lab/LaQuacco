@@ -152,8 +152,8 @@ def get_max(array):
     """
     maximum = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         maximum = pixls.max()
     return maximum
@@ -167,8 +167,8 @@ def get_mean(array):
     """
     mean = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         mean = pixls.mean()
     return mean
@@ -182,8 +182,8 @@ def get_min(array):
     """
     minimum = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         minimum = pixls.min()
     return minimum
@@ -225,21 +225,22 @@ def get_stats(array):
     array -- Numpy array
     """
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    df = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    dscr = df.describe(percentiles=(0.1, 0.5, 0.9))  # sort data only once
-    count = dscr.filter([pl.col("describe") == "count"])["pixls"][0]
-    mean = dscr.filter([pl.col("describe") == "mean"])["pixls"][0]
-    stdev = dscr.filter([pl.col("describe") == "std"])["pixls"][0]
-    stderr = np.power(stdev, 2) / count
-    minimum = dscr.filter([pl.col("describe") == "min"])["pixls"][0]
-    perc10 = dscr.filter([pl.col("describe") == "10%"])["pixls"][0]
-    median = dscr.filter([pl.col("describe") == "50%"])["pixls"][0]
-    perc90 = dscr.filter([pl.col("describe") == "90%"])["pixls"][0]
-    maximum = dscr.filter([pl.col("describe") == "max"])["pixls"][0]
-    return (count, mean, stdev, stderr, median, (minimum, maximum), (perc10, perc90))
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    sortd = arrow.sort("pixls")  # expensive
+    sortd.set_sorted("pixls")  # flag
+    pixls = sortd["pixls"]
+    size = len(pixls)
+    minimum = pixls[0]
+    head = pixls.head(math.ceil(0.001 * size)).mean()  # first elements
+    mean = pixls.mean()
+    stdev = pixls.std()
+    stderr = np.power(stdev, 2) / size
+    tail = pixls.tail(math.ceil(0.002 * size)).mean()  # last elements
+    maximum = pixls[-1]
+    return (mean, stdev, stderr, (minimum, maximum), (head, tail))
 
 
-def get_stderr(array, mean=None, ddof=1):
+def get_stderr(array, ddof=1):
     """Calculates the standard error of the arithmetic mean.
 
     Keyword arguments:
@@ -250,16 +251,15 @@ def get_stderr(array, mean=None, ddof=1):
     """
     stderr = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size - ddof > 0:
-        if not mean:
-            mean = get_mean(array)
-        stderr = np.sqrt(
-            get_var(array, mean, ddof) / array.size
-        )  # unreliability measure
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
+    pixls_len = len(pixls)
+    if pixls_len - ddof > 0:
+        stderr = np.sqrt(pixls.var(ddof=ddof) / pixls_len)  # unreliability measure
     return stderr
 
 
-def get_stdev(array, mean=None, ddof=1):
+def get_stdev(array, ddof=1):
     """Calculates the standard deviation.
 
     Keyword arguments:
@@ -270,10 +270,11 @@ def get_stdev(array, mean=None, ddof=1):
     """
     stdev = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size - ddof > 0:
-        if not mean:
-            mean = get_mean(array, size)
-        stdev = np.sqrt(get_var(array, mean, ddof))
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
+    pixls_len = len(pixls)
+    if pixls_len - ddof > 0:
+        stdev = np.sqrt(pixls.var(ddof=ddof))
     return stdev
 
 
@@ -329,30 +330,6 @@ def get_time_left(start=None, current=None, total=None):
             else:
                 time_left = 0.0
     return time_left
-
-
-def get_var(array, mean=None, ddof=1):
-    """Calculates the variance - the variability of the data.
-    If we have observed the whole population (all possible samples),
-    then we would have as many degrees of freedom as observed samples.
-    However, by default we only observe a fraction of all possilbe samples,
-    so we lose one degree of freedom (n-k) - for estimating the arithmetic mean.
-
-    Keyword arguments:
-    array -- Numpy array
-    mean -- arithmetic mean of the observations
-    ddof -- number of estimated parameters, reduces degrees of freedom
-    """
-    variance = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size > 0:
-        if not mean:
-            mean = get_mean(array)
-        sums_squared = np.sum(np.power(array - mean, 2))
-        degrs_freedom = array.size - ddof
-        if degrs_freedom > 0:
-            variance = sums_squared / degrs_freedom
-    return variance
 
 
 def get_timestamp(timestamp):
@@ -420,21 +397,20 @@ def stats_img_data(tiff, chan_mins=None):
         if chan_mins:
             mean = get_mean(signal)
             img_chans_data[chan]["mean"] = mean
-            img_chans_data[chan]["stdev"] = get_stdev(signal, mean)
-            img_chans_data[chan]["stderr"] = get_stderr(signal, mean)
+            img_chans_data[chan]["stdev"] = get_stdev(signal)
+            img_chans_data[chan]["stderr"] = get_stderr(signal)
             img_chans_data[chan]["minmax"] = (
                 get_min(signal),
                 get_max(signal),
             )
         else:
             (
-                img_chans_data[chan]["count"],
                 img_chans_data[chan]["mean"],
                 img_chans_data[chan]["stdev"],
                 img_chans_data[chan]["stderr"],
-                img_chans_data[chan]["median"],
                 img_chans_data[chan]["minmax"],
-                img_chans_data[chan]["bottop"],
+                img_chans_data[chan]["headtail"],
             ) = get_stats(signal)
+            get_stats(signal)
     tiff["tiff"].close()
     return img_chans_data
