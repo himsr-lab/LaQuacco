@@ -354,22 +354,25 @@ def score_img_data(tiff, chans_minmax=None):
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
-        bot, top = (
+        signal_min, signal_max = (
             chans_minmax[chan]
             if chans_minmax and chan in chans_minmax  # user-defined
             else (get_min(pixls), get_max(pixls))  # automatic
         )
-        span = top - bot
-        signal = pixls[pixls >= (bot + 0.25 * span)]  # ignore background
-        size = signal.size
+        signal_range = signal_max - signal_min
+        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # cheap
+        signal = arrow.filter(pl.col("pixls") >= (signal_min + 0.25 * signal_range))[
+            "pixls"
+        ]  # ignore background
+        signal_count = len(signal)
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = np.count_nonzero(signal[signal < (bot + 0.50 * span)])
-        counts[2] = np.count_nonzero(signal[signal >= (bot + 0.75 * span)])
+        counts[0] = signal.filter(signal < (signal_min + 0.5 * signal_range)).count()
+        counts[2] = signal.filter(signal >= (signal_min + 0.75 * signal_range)).count()
         counts[1] = size - counts[0] - counts[2]
         img_chans_scores[chan] = {
-            "score_1": 1.0 * counts[0] / size,  # max contribution: + 1
-            "score_2": 10.0 * counts[1] / size,  # max contribution: + 10
-            "score_3": 100.0 * counts[2] / size,  # max contribution: + 100
+            "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
+            "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
+            "score_3": 100.0 * counts[2] / signal_count,  # max contribution: + 100
         }
     tiff["tiff"].close()
     return img_chans_scores
