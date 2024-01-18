@@ -10,7 +10,6 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import scipy as sp
 
 
 def calculate_boxplot(array):
@@ -63,7 +62,7 @@ def get_chan_data(imgs_chans_data, chan, data):
             chan_data.append(None)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
-    chan_data[chan_data == None] = np.nan
+    chan_data[chan_data is None] = np.nan
     return chan_data
 
 
@@ -91,11 +90,6 @@ def get_colormap(count):
     """
     color_points = np.linspace(0, 1, count)
     return [cm.hsv(color_point) for color_point in color_points]
-
-    for i, image in enumerate(images_img_data):
-        for chan in chans:
-            chans_means[i] += images_img_data[image][chan]["mean"]
-            chans_stderrs[i] += images_img_data[image][chan]["stderr"]
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -140,7 +134,7 @@ def get_img_data(imgs_chans_data, img, data):
         img_data = None
     # convert to Numpy array, keep Python datatype
     img_data = np.array(img_data, dtype="float")
-    img_data[img_data == None] = np.nan
+    img_data[img_data is None] = np.nan
     return img_data
 
 
@@ -368,7 +362,7 @@ def score_img_data(tiff, chans_minmax=None):
         counts = [np.nan, np.nan, np.nan]
         counts[0] = signal.filter(signal < (signal_min + 0.5 * signal_range)).count()
         counts[2] = signal.filter(signal >= (signal_min + 0.75 * signal_range)).count()
-        counts[1] = size - counts[0] - counts[2]
+        counts[1] = signal_count - counts[0] - counts[2]
         img_chans_scores[chan] = {
             "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
             "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
