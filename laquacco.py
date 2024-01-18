@@ -4,11 +4,13 @@ import math
 import os
 import random
 import tifffile
+import time
 import xmltodict
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import scipy as sp
 
 
 def calculate_boxplot(array):
@@ -61,7 +63,7 @@ def get_chan_data(imgs_chans_data, chan, data):
             chan_data.append(None)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
-    chan_data[chan_data is None] = np.nan
+    chan_data[chan_data == None] = np.nan
     return chan_data
 
 
@@ -89,6 +91,11 @@ def get_colormap(count):
     """
     color_points = np.linspace(0, 1, count)
     return [cm.hsv(color_point) for color_point in color_points]
+
+    for i, image in enumerate(images_img_data):
+        for chan in chans:
+            chans_means[i] += images_img_data[image][chan]["mean"]
+            chans_stderrs[i] += images_img_data[image][chan]["stderr"]
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -133,7 +140,7 @@ def get_img_data(imgs_chans_data, img, data):
         img_data = None
     # convert to Numpy array, keep Python datatype
     img_data = np.array(img_data, dtype="float")
-    img_data[img_data is None] = np.nan
+    img_data[img_data == None] = np.nan
     return img_data
 
 
@@ -145,8 +152,8 @@ def get_max(array):
     """
     maximum = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         maximum = pixls.max()
     return maximum
@@ -160,8 +167,8 @@ def get_mean(array):
     """
     mean = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         mean = pixls.mean()
     return mean
@@ -175,8 +182,8 @@ def get_min(array):
     """
     minimum = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    frame = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    pixls = frame["pixls"]
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
     if len(pixls) > 0:
         minimum = pixls.min()
     return minimum
@@ -218,21 +225,22 @@ def get_stats(array):
     array -- Numpy array
     """
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    df = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    dscr = df.describe(percentiles=(0.01, 0.5, 0.99))  # sort data only once
-    count = dscr.filter([pl.col("describe") == "count"])["pixls"][0]
-    mean = dscr.filter([pl.col("describe") == "mean"])["pixls"][0]
-    stdev = dscr.filter([pl.col("describe") == "std"])["pixls"][0]
-    stderr = np.power(stdev, 2) / count
-    minimum = dscr.filter([pl.col("describe") == "min"])["pixls"][0]
-    bot = dscr.filter([pl.col("describe") == "1%"])["pixls"][0]
-    median = dscr.filter([pl.col("describe") == "50%"])["pixls"][0]
-    top = dscr.filter([pl.col("describe") == "99%"])["pixls"][0]
-    maximum = dscr.filter([pl.col("describe") == "max"])["pixls"][0]
-    return (count, mean, stdev, stderr, median, (minimum, maximum), (bot, top))
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    sortd = arrow.sort("pixls")  # expensive
+    sortd.set_sorted("pixls")  # flag
+    pixls = sortd["pixls"]
+    size = len(pixls)
+    minimum = pixls[0]
+    head = pixls.head(math.ceil(0.001 * size)).mean()  # first elements
+    mean = pixls.mean()
+    stdev = pixls.std()
+    stderr = np.power(stdev, 2) / size
+    tail = pixls.tail(math.ceil(0.002 * size)).mean()  # last elements
+    maximum = pixls[-1]
+    return (mean, stdev, stderr, (minimum, maximum), (head, tail))
 
 
-def get_stderr(array, mean=None, ddof=1):
+def get_stderr(array, ddof=1):
     """Calculates the standard error of the arithmetic mean.
 
     Keyword arguments:
@@ -243,16 +251,15 @@ def get_stderr(array, mean=None, ddof=1):
     """
     stderr = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size - ddof > 0:
-        if not mean:
-            mean = get_mean(array)
-        stderr = np.sqrt(
-            get_var(array, mean, ddof) / array.size
-        )  # unreliability measure
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
+    pixls_len = len(pixls)
+    if pixls_len - ddof > 0:
+        stderr = np.sqrt(pixls.var(ddof=ddof) / pixls_len)  # unreliability measure
     return stderr
 
 
-def get_stdev(array, mean=None, ddof=1):
+def get_stdev(array, ddof=1):
     """Calculates the standard deviation.
 
     Keyword arguments:
@@ -263,10 +270,11 @@ def get_stdev(array, mean=None, ddof=1):
     """
     stdev = np.nan
     array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size - ddof > 0:
-        if not mean:
-            mean = get_mean(array, size)
-        stdev = np.sqrt(get_var(array, mean, ddof))
+    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    pixls = arrow["pixls"]
+    pixls_len = len(pixls)
+    if pixls_len - ddof > 0:
+        stdev = np.sqrt(pixls.var(ddof=ddof))
     return stdev
 
 
@@ -302,28 +310,26 @@ def get_tiff(image):
     }
 
 
-def get_var(array, mean=None, ddof=1):
-    """Calculates the variance - the variability of the data.
-    If we have observed the whole population (all possible samples),
-    then we would have as many degrees of freedom as observed samples.
-    However, by default we only observe a fraction of all possilbe samples,
-    so we lose one degree of freedom (n-k) - for estimating the arithmetic mean.
+def get_time_left(start=None, current=None, total=None):
+    """Return a time in seconds representing the remainder based on
+    the durations of the previous iterations (rough estimate).
 
     Keyword arguments:
-    array -- Numpy array
-    mean -- arithmetic mean of the observations
-    ddof -- number of estimated parameters, reduces degrees of freedom
+    start  -- start time from call to `time.time()`
+    current  -- current iteration (positive)
+    total -- total iterations
     """
-    variance = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    if array.size > 0:
-        if not mean:
-            mean = get_mean(array)
-        sums_squared = np.sum(np.power(array - mean, 2))
-        degrs_freedom = array.size - ddof
-        if degrs_freedom > 0:
-            variance = sums_squared / degrs_freedom
-    return variance
+    time_left = None
+    now = time.time()
+    if now > start:
+        if current:
+            if current < total:
+                time_per_iter = (now - start) / current
+                iter_left = total - current
+                time_left = iter_left * time_per_iter
+            else:
+                time_left = 0.0
+    return time_left
 
 
 def get_timestamp(timestamp):
@@ -335,35 +341,38 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def score_img_data(tiff, chan_minmax=None):
+def score_img_data(tiff, chans_minmax=None):
     """Calculate the C-Scores of image channels.
     The algorithm is similar to an H-Score but scores the different
     intenisty classes with the factors 1, 10, and 10, respectively.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chan_minmax -- dictionary with percentile tuples
+    chans_minmax -- dictionary with percentile tuples
     """
     img_chans_scores = dict()
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
-        bot, top = (
-            chan_minmax[chan]
-            if chan_minmax and chan in chan_minmax  # user-defined
+        signal_min, signal_max = (
+            chans_minmax[chan]
+            if chans_minmax and chan in chans_minmax  # user-defined
             else (get_min(pixls), get_max(pixls))  # automatic
         )
-        span = top - bot
-        signal = pixls[pixls >= (bot + 0.25 * span)]  # ignore background
-        size = signal.size
+        signal_range = signal_max - signal_min
+        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # cheap
+        signal = arrow.filter(pl.col("pixls") >= (signal_min + 0.25 * signal_range))[
+            "pixls"
+        ]  # ignore background
+        signal_count = len(signal)
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = np.count_nonzero(signal[signal < (bot + 0.50 * span)])
-        counts[2] = np.count_nonzero(signal[signal >= (bot + 0.75 * span)])
+        counts[0] = signal.filter(signal < (signal_min + 0.5 * signal_range)).count()
+        counts[2] = signal.filter(signal >= (signal_min + 0.75 * signal_range)).count()
         counts[1] = size - counts[0] - counts[2]
         img_chans_scores[chan] = {
-            "score_1": 1.0 * counts[0] / size,  # max contribution: + 1
-            "score_2": 10.0 * counts[1] / size,  # max contribution: + 10
-            "score_3": 100.0 * counts[2] / size,  # max contribution: + 100
+            "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
+            "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
+            "score_3": 100.0 * counts[2] / signal_count,  # max contribution: + 100
         }
     tiff["tiff"].close()
     return img_chans_scores
@@ -391,21 +400,20 @@ def stats_img_data(tiff, chan_mins=None):
         if chan_mins:
             mean = get_mean(signal)
             img_chans_data[chan]["mean"] = mean
-            img_chans_data[chan]["stdev"] = get_stdev(signal, mean)
-            img_chans_data[chan]["stderr"] = get_stderr(signal, mean)
+            img_chans_data[chan]["stdev"] = get_stdev(signal)
+            img_chans_data[chan]["stderr"] = get_stderr(signal)
             img_chans_data[chan]["minmax"] = (
                 get_min(signal),
                 get_max(signal),
             )
         else:
             (
-                img_chans_data[chan]["count"],
                 img_chans_data[chan]["mean"],
                 img_chans_data[chan]["stdev"],
                 img_chans_data[chan]["stderr"],
-                img_chans_data[chan]["median"],
                 img_chans_data[chan]["minmax"],
-                img_chans_data[chan]["bottop"],
+                img_chans_data[chan]["headtail"],
             ) = get_stats(signal)
+            get_stats(signal)
     tiff["tiff"].close()
     return img_chans_data
