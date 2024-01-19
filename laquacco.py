@@ -138,16 +138,16 @@ def get_run_slice(array, index, slice_margin):
     return slice
 
 
-def get_stats(array, chan_thrld):
+def get_stats(array, chan_min):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
 
     Keyword arguments:
     array -- Numpy array
-    chan_thrld -- minimum signal value (threshold)
+    chan_min  -- signal threshold (maximum value of background)
     """
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    pixls = arrow.filter(pl.col('pixls') > chan_thrld)  # exclude background
+    pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
     dscr = pixls.describe(percentiles=None)  # don't sort data (slow)
     nobs = dscr.filter(pl.col("describe") == "count")["pixls"][0]
     mean = dscr.filter(pl.col("describe") == "mean")["pixls"][0]
@@ -156,7 +156,6 @@ def get_stats(array, chan_thrld):
     stderr = np.sqrt(var / nobs)
     minimum = dscr.filter(pl.col("describe") == "min")["pixls"][0]
     maximum = dscr.filter(pl.col("describe") == "max")["pixls"][0]
-    print(dscr)
     return (nobs, mean, stdev, stderr, (minimum, maximum))
 
 
@@ -242,30 +241,35 @@ def score_img_data(tiff, chans_minmax=None):
             else (np.nanmin(pixls), np.nanmax(pixls))  # automatic
         )
         signal_range = signal_max - signal_min
-        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")
-        signal = arrow.filter(pl.col("pixls") >= (signal_min + 0.25 * signal_range))[
-            "pixls"
-        ]  # ignore background
-        signal_count = len(signal)
+        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # fast
         counts = [np.nan, np.nan, np.nan]
-        counts[0] = signal.filter(signal < (signal_min + 0.5 * signal_range)).count()
-        counts[2] = signal.filter(signal >= (signal_min + 0.75 * signal_range)).count()
-        counts[1] = signal_count - counts[0] - counts[2]
-        img_chans_scores[chan] = {
-            "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
-            "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
-            "score_3": 100.0 * counts[2] / signal_count,  # max contribution: + 100
-        }
+        # class I: 0-(25)%, excluded
+        signal = arrow.filter(pl.col("pixls") >= signal_min + 0.25 * signal_range)
+        signal_count = len(signal)
+        if signal_count:  # sufficient signal
+            # class II: 25-(50)%
+            counts[0] = len(signal.filter(pl.col("pixls") < signal_min + 0.5 * signal_range))
+            # class IV: 75-(100)%
+            counts[2] = len(signal.filter(pl.col("pixls") >= signal_min + 0.75 * signal_range))
+            # class III: 50-(75)%
+            counts[1] = signal_count - counts[0] - counts[2]
+            img_chans_scores[chan] = {
+                "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
+                "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
+                "score_3": 100.0 * counts[2] / signal_count,  # max contribution: + 100
+            }
+        else: # insufficient signal
+            img_chans_scores[chan] = {"score_1": 0.0, "score_2": 0.0, "score_3": 0.0}
     tiff["tiff"].close()
     return img_chans_scores
 
 
-def stats_img_data(tiff, chan_thrlds=None):
+def stats_img_data(tiff, chans_min=None):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chan_thrlds -- minimum signal values (thresholds)
+    chans_min  -- signal thresholds (maximum values of backgrounds)
     """
     img_chans_data = dict()
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
@@ -275,7 +279,7 @@ def stats_img_data(tiff, chan_thrlds=None):
         img_chans_data["metadata"] = {
             "date_time": get_timestamp(page.tags["DateTime"].value)
         }
-        chan_thrld = chan_thrlds[chan] if chan_thrlds and chan in chan_thrlds else 0.0
+        chan_min = chans_min[chan] if chans_min and chan in chans_min else 0.0
         # get statistics for channel
         img_chans_data[chan] = {}
         (
@@ -284,7 +288,7 @@ def stats_img_data(tiff, chan_thrlds=None):
             img_chans_data[chan]["stdev"],
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
-        ) = get_stats(pixls, chan_thrld)
+        ) = get_stats(pixls, chan_min)
     tiff["tiff"].close()
     return img_chans_data
 
