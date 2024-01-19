@@ -145,8 +145,7 @@ def get_max(array):
     array -- Numpy array
     """
     maximum = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
     pixls = arrow["pixls"]
     if len(pixls) > 0:
         maximum = pixls.max()
@@ -160,8 +159,7 @@ def get_mean(array):
     array -- Numpy array
     """
     mean = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
     pixls = arrow["pixls"]
     if len(pixls) > 0:
         mean = pixls.mean()
@@ -175,8 +173,7 @@ def get_min(array):
     array -- Numpy array
     """
     minimum = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
     pixls = arrow["pixls"]
     if len(pixls) > 0:
         minimum = pixls.min()
@@ -211,28 +208,21 @@ def get_samples(population=None, perc=100):
     samples = random.sample(population, size)
     return samples
 
-
 def get_stats(array):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
     Keyword arguments:
     array -- Numpy array
     """
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
-    sortd = arrow.sort("pixls")  # expensive
-    sortd.set_sorted("pixls")  # flag
-    pixls = sortd["pixls"]
-    size = len(pixls)
-    minimum = pixls[0]
-    head = pixls.head(math.ceil(0.001 * size)).mean()  # first elements
-    mean = pixls.mean()
-    stdev = pixls.std()
-    stderr = np.power(stdev, 2) / size
-    tail = pixls.tail(math.ceil(0.002 * size)).mean()  # last elements
-    maximum = pixls[-1]
-    return (mean, stdev, stderr, (minimum, maximum), (head, tail))
-
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
+    pixls = arrow["pixls"]
+    dscr = pixls.describe(percentiles=None)  # don't sort data (slow)
+    nobs = dscr.filter(pl.col("statistic") == "count")["value"][0]
+    mean = dscr.filter(pl.col("statistic") == "mean")["value"][0]
+    stdev = dscr.filter(pl.col("statistic") == "std")["value"][0]
+    minimum = dscr.filter(pl.col("statistic") == "min")["value"][0]
+    maximum = dscr.filter(pl.col("statistic") == "max")["value"][0]
+    return (nobs, mean, stdev, (minimum, maximum))
 
 def get_stderr(array, ddof=1):
     """Calculates the standard error of the arithmetic mean.
@@ -244,14 +234,12 @@ def get_stderr(array, ddof=1):
     ddof -- number of estimated parameters, reduces degrees of freedom
     """
     stderr = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
     pixls = arrow["pixls"]
     pixls_len = len(pixls)
     if pixls_len - ddof > 0:
         stderr = np.sqrt(pixls.var(ddof=ddof) / pixls_len)  # unreliability measure
     return stderr
-
 
 def get_stdev(array, ddof=1):
     """Calculates the standard deviation.
@@ -263,8 +251,7 @@ def get_stdev(array, ddof=1):
     ddof -- number of estimated parameters, reduces degrees of freedom
     """
     stdev = np.nan
-    array = array[~np.isnan(array)].ravel()  # ignore all `np.nan` values
-    arrow = pl.from_numpy(array, schema=["pixls"], orient="col")  # cheap
+    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")
     pixls = arrow["pixls"]
     pixls_len = len(pixls)
     if pixls_len - ddof > 0:
@@ -354,7 +341,7 @@ def score_img_data(tiff, chans_minmax=None):
             else (get_min(pixls), get_max(pixls))  # automatic
         )
         signal_range = signal_max - signal_min
-        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # cheap
+        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")
         signal = arrow.filter(pl.col("pixls") >= (signal_min + 0.25 * signal_range))[
             "pixls"
         ]  # ignore background
@@ -402,12 +389,12 @@ def stats_img_data(tiff, chan_mins=None):
             )
         else:
             (
+                img_chans_data[chan]["nobs"],
                 img_chans_data[chan]["mean"],
                 img_chans_data[chan]["stdev"],
-                img_chans_data[chan]["stderr"],
                 img_chans_data[chan]["minmax"],
-                img_chans_data[chan]["headtail"],
             ) = get_stats(signal)
             get_stats(signal)
     tiff["tiff"].close()
     return img_chans_data
+
