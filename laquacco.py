@@ -171,7 +171,10 @@ def get_stats(array, chan_minmax=(None, None)):
         score = None
     minimum = result.select("min").item()
     maximum = result.select("max").item()
-    return (total, size, mean, stdev, stderr, (minimum, maximum), score)
+    perc = size/total
+    if score:  # mean value
+        score /= size
+    return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
 
 
 def get_tiff(image):
