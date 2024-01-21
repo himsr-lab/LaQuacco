@@ -138,7 +138,7 @@ def get_run_slice(array, index, slice_margin):
     return slice
 
 
-def get_stats(array, chan_min):
+def get_stats(array, chan_minmax=(None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
 
@@ -147,16 +147,41 @@ def get_stats(array, chan_min):
     chan_min  -- signal threshold (maximum value of background)
     """
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
-    dscr = pixls.describe(percentiles=None)  # don't sort data (slow)
-    nobs = dscr.filter(pl.col("describe") == "count")["pixls"][0]
-    mean = dscr.filter(pl.col("describe") == "mean")["pixls"][0]
-    stdev = dscr.filter(pl.col("describe") == "std")["pixls"][0]
-    var = np.power(stdev, 2)
-    stderr = np.sqrt(var / nobs)
-    minimum = dscr.filter(pl.col("describe") == "min")["pixls"][0]
-    maximum = dscr.filter(pl.col("describe") == "max")["pixls"][0]
-    return (nobs, mean, stdev, stderr, (minimum, maximum))
+    pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
+    size = len(pixls)
+    if chan_minmax[1]:  # get stats and score
+        coeff = 0.21544346900318836
+        grate = 0.02666666666666667
+        result = (  # iterate over pixels only once
+            pixls.select([
+                pl.col("pixls").mean().alias("mean"),
+                pl.col("pixls").std().alias("stdev"),
+                pl.col("pixls").min().alias("min"),
+                pl.col("pixls").max().alias("max"),
+                (coeff * 10.0 ** (grate * pl.col("pixls") / chan_minmax[1]))\
+                .sum().alias("score")  # slow
+                # Pixels are weighed by their values in relation to the max value:
+                # Examples: 0%: +0.0, 25%: +1.0, 50%: +4.6, 75%: +21.5, 100%: +100
+            ])
+        )
+        mean = result.select("mean").item()
+        stdev = result.select("stdev").item()
+        stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
+        score = result.select("score").item()
+    else:  #  get minimal score
+        result = (
+            pixls.select([
+                pl.col("pixls").min().alias("min"),
+                pl.col("pixls").max().alias("max"),
+            ])
+        )
+        mean = None
+        stdev = None
+        stderr = None
+        score = None
+    minimum = result.select("min").item()
+    maximum = result.select("max").item()
+    return (size, mean, stdev, stderr, (minimum, maximum), score)
 
 
 def get_tiff(image):
@@ -222,49 +247,7 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def score_img_data(tiff, chans_minmax=None):
-    """Calculate the C-Scores of image channels.
-    The algorithm is similar to an H-Score but scores the different
-    intenisty classes with the factors 1, 10, and 10, respectively.
-
-    Keyword arguments:
-    tiff -- TIFF dictionary
-    chans_minmax -- dictionary with percentile tuples
-    """
-    img_chans_scores = dict()
-    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
-    for page, chan in zip(tiff["pages"], tiff["channels"]):
-        page.asarray(out=pixls)  # in-place
-        signal_min, signal_max = (
-            chans_minmax[chan]
-            if chans_minmax and chan in chans_minmax  # user-defined
-            else (np.nanmin(pixls), np.nanmax(pixls))  # automatic
-        )
-        signal_range = signal_max - signal_min
-        arrow = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # fast
-        counts = [np.nan, np.nan, np.nan]
-        # class I: 0-(25)%, excluded
-        signal = arrow.filter(pl.col("pixls") >= signal_min + 0.25 * signal_range)
-        signal_count = len(signal)
-        if signal_count:  # sufficient signal
-            # class II: 25-(50)%
-            counts[0] = len(signal.filter(pl.col("pixls") < signal_min + 0.5 * signal_range))
-            # class IV: 75-(100)%
-            counts[2] = len(signal.filter(pl.col("pixls") >= signal_min + 0.75 * signal_range))
-            # class III: 50-(75)%
-            counts[1] = signal_count - counts[0] - counts[2]
-            img_chans_scores[chan] = {
-                "score_1": 1.0 * counts[0] / signal_count,  # max contribution: + 1
-                "score_2": 10.0 * counts[1] / signal_count,  # max contribution: + 10
-                "score_3": 100.0 * counts[2] / signal_count,  # max contribution: + 100
-            }
-        else: # insufficient signal
-            img_chans_scores[chan] = {"score_1": 0.0, "score_2": 0.0, "score_3": 0.0}
-    tiff["tiff"].close()
-    return img_chans_scores
-
-
-def stats_img_data(tiff, chans_min=None):
+def stats_img_data(tiff, chans_minmax=None):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
@@ -279,16 +262,18 @@ def stats_img_data(tiff, chans_min=None):
         img_chans_data["metadata"] = {
             "date_time": get_timestamp(page.tags["DateTime"].value)
         }
-        chan_min = chans_min[chan] if chans_min and chan in chans_min else 0.0
+        if not chans_minmax or chan not in chans_minmax:
+            chans_minmax = {chan: (0.0, None)}
         # get statistics for channel
         img_chans_data[chan] = {}
         (
-            img_chans_data[chan]["nobs"],
+            img_chans_data[chan]["size"],
             img_chans_data[chan]["mean"],
             img_chans_data[chan]["stdev"],
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
-        ) = get_stats(pixls, chan_min)
+            img_chans_data[chan]["score"],
+        ) = get_stats(pixls, chans_minmax[chan])
     tiff["tiff"].close()
     return img_chans_data
 
