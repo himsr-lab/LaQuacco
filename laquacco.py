@@ -149,7 +149,7 @@ def get_stats(array, chan_minmax=(None, None)):
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
-    if chan_minmax[1]:  # get stats and score
+    if chan_minmax[1]:  # get full stats and score
         coeff = 0.21544346900318836
         grate = 0.02666666666666667
         result = (  # iterate over pixels only once
@@ -168,7 +168,7 @@ def get_stats(array, chan_minmax=(None, None)):
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         score = result.select("score").item()
-    else:  #  get minimal score
+    else:  #  get minimal stats
         result = (
             pixls.select([
                 pl.col("pixls").min().alias("min"),
