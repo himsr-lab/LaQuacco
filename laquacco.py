@@ -217,7 +217,7 @@ def get_tiff(image):
 
 
 def get_time_left(start=None, current=None, total=None):
-    """Return a time in seconds representing the remainder based on
+    """Return a time string representing the remainder based on
     the durations of the previous iterations (rough estimate).
 
     Keyword arguments:
@@ -225,17 +225,36 @@ def get_time_left(start=None, current=None, total=None):
     current  -- current iteration (positive)
     total -- total iterations
     """
-    time_left = None
-    now = time.time()
+    seconds = 0.0
+    now = time.time()  # seconds
     if now > start:
         if current:
             if current < total:
                 time_per_iter = (now - start) / current
                 iter_left = total - current
-                time_left = iter_left * time_per_iter
+                seconds = iter_left * time_per_iter
             else:
-                time_left = 0.0
-    return time_left
+                seconds = 0.0
+    # create format string
+    time_str = ""
+    sec_min = 60.0
+    sec_hour = 60.0 * sec_min
+    sec_day = 24.0 * sec_hour
+    days = seconds // sec_day
+    seconds %= sec_day
+    hours = seconds // sec_hour
+    seconds %= sec_hour
+    minutes = seconds // sec_min
+    seconds %= sec_min
+    if days > 0.0:
+        time_str += f"{round(days)}d "
+    if hours > 0.0:
+        time_str += f"{round(hours)}h "
+    if minutes > 0.0:
+        time_str += f"{round(minutes)}m "
+    if seconds >= 0.0:
+        time_str += f"{round(seconds)}s"
+    return time_str.strip()
 
 
 def get_timestamp(timestamp):
