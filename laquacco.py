@@ -140,8 +140,8 @@ def get_stats(array, chan_minmax=(None, None)):
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
     if chan_minmax[1]:  # get full stats and score
-        coeff = 0.21544346900318836
-        grate = 0.02666666666666667
+        coeff = 0.1 # 0.21544346900318836
+        grate = 0.04 # 0.02666666666666667
         result = (  # iterate over pixels only once
             pixls.select([
                 pl.col("pixls").mean().alias("mean"),
@@ -150,8 +150,6 @@ def get_stats(array, chan_minmax=(None, None)):
                 pl.col("pixls").max().alias("max"),
                 (coeff * 10.0 ** (grate * pl.col("pixls") / chan_minmax[1]))\
                 .sum().alias("score")  # slow
-                # Pixels are weighed by their values in relation to the max value:
-                # Examples: 0%: +0.0, 25%: +1.0, 50%: +4.6, 75%: +21.5, 100%: +100
             ])
         )
         mean = result.select("mean").item()
@@ -172,7 +170,7 @@ def get_stats(array, chan_minmax=(None, None)):
     minimum = result.select("min").item()
     maximum = result.select("max").item()
     perc = size/total
-    if score:  # mean value
+    if score:  # get mean value
         score /= size
     return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
 
@@ -279,11 +277,13 @@ def stats_img_data(tiff, chans_minmax=None):
         # get statistics for channel
         img_chans_data[chan] = {}
         (
+            img_chans_data[chan]["total"],
             img_chans_data[chan]["size"],
             img_chans_data[chan]["mean"],
             img_chans_data[chan]["stdev"],
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
+            img_chans_data[chan]["perc"],
             img_chans_data[chan]["score"],
         ) = get_stats(pixls, chans_minmax[chan])
     tiff["tiff"].close()
