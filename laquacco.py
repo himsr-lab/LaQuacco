@@ -4,7 +4,6 @@ import os
 import tifffile
 import time
 import xmltodict
-import matplotlib.cm as cm
 import numpy as np
 import polars as pl
 
@@ -63,16 +62,6 @@ def get_chan_img(tiff, channel):
             page.asarray(out=pixls)  # in-place
     tiff["tiff"].close()
     return pixls
-
-
-def get_colormap(count):
-    """Return a colormap with `counts` number of colors.
-
-    Keyword arguments:
-    count  -- number of colors to be generated
-    """
-    color_points = np.linspace(0, 1, count)
-    return [cm.hsv(color_point) for color_point in color_points]
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -147,6 +136,7 @@ def get_stats(array, chan_minmax=(None, None)):
     chan_min  -- signal threshold (maximum value of background)
     """
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
+    total = len(arrow)
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
     if chan_minmax[1]:  # get full stats and score
@@ -181,7 +171,7 @@ def get_stats(array, chan_minmax=(None, None)):
         score = None
     minimum = result.select("min").item()
     maximum = result.select("max").item()
-    return (size, mean, stdev, stderr, (minimum, maximum), score)
+    return (total, size, mean, stdev, stderr, (minimum, maximum), score)
 
 
 def get_tiff(image):
