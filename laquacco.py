@@ -139,7 +139,7 @@ def get_stats(array, chan_minmax=(None, None)):
     total = len(arrow)
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
-    if chan_minmax[1]:  # get full stats and score
+    if chan_minmax[1] and size:  # get full stats and score
         # prepare scoring variables
         coeff = 0.46415888336127786
         grow = 1.3333333333333333
@@ -171,6 +171,8 @@ def get_stats(array, chan_minmax=(None, None)):
     minimum = result.select("min").item()
     maximum = result.select("max").item()
     perc = size/total
+    if score and size:
+        score = 100.0 * score / size
     return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
 
 
