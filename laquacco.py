@@ -139,45 +139,40 @@ def get_stats(array, chan_minmax=(None, None)):
     total = len(arrow)
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
-    if chan_minmax[1] and size:  # get full stats and score
-        # prepare scoring variables
-        chan_max = chan_minmax[1]
-        result = (  # iterate over pixels only once
-            pixls.select([
-                pl.col("pixls").mean().alias("mean"),
-                pl.col("pixls").std().alias("stdev"),
-                pl.col("pixls").min().alias("min"),
-                pl.col("pixls").max().alias("max"),
-                pl.when((pl.col("pixls") >= 0.25 * chan_max) & (pl.col("pixls") < 0.5 * chan_max))\
-                .then(1).otherwise(0).sum().alias("score_1"),
-                pl.when((pl.col("pixls") >= 0.5 * chan_max) & (pl.col("pixls") < 0.75 * chan_max))\
-                .then(1).otherwise(0).sum().alias("score_2"),
-                pl.when(pl.col("pixls") >= 0.75 * chan_max)\
-                .then(1).otherwise(0).sum().alias("score_3"),
-            ])
-        )
+    perc = size/total
+    mean = None
+    stdev = None
+    stderr = None
+    minimum = None
+    maximum = None
+    score = None
+    if size:
+        calcs = [pl.col("pixls").mean().alias("mean"),
+                 pl.col("pixls").std().alias("stdev"),
+                 pl.col("pixls").min().alias("min"),
+                 pl.col("pixls").max().alias("max")]
+        scores = chan_minmax[1]
+        if scores:
+            chan_max = chan_minmax[1]
+            calcs.extend(
+                 [pl.when((pl.col("pixls") >= 0.25 * chan_max) & (pl.col("pixls") < 0.5 * chan_max))\
+                    .then(1).otherwise(0).sum().alias("score_1"),
+                  pl.when((pl.col("pixls") >= 0.5 * chan_max) & (pl.col("pixls") < 0.75 * chan_max))\
+                    .then(1).otherwise(0).sum().alias("score_2"),
+                  pl.when(pl.col("pixls") >= 0.75 * chan_max)\
+                    .then(1).otherwise(0).sum().alias("score_3")])
+        result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
-        score = 100.0 / size *\
-                (1.0 * result.select("score_1").item() +\
-                 10.0 * result.select("score_2").item() +\
-                 100.0 * result.select("score_3").item())
-    else:  #  get minimal stats
-        result = (
-            pixls.select([
-                pl.col("pixls").min().alias("min"),
-                pl.col("pixls").max().alias("max"),
-            ])
-        )
-        mean = None
-        stdev = None
-        stderr = None
-        score = None
-    minimum = result.select("min").item()
-    maximum = result.select("max").item()
-    perc = size/total
-    return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
+        minimum = result.select("min").item()
+        maximum = result.select("max").item()
+        if scores:
+            score = 100.0 / size *\
+                     (1.0 * result.select("score_1").item() +\
+                     10.0 * result.select("score_2").item() +\
+                     100.0 * result.select("score_3").item())
+    return (total, size, perc, mean, stdev, stderr, (minimum, maximum), score)
 
 
 def get_tiff(image):
@@ -284,11 +279,11 @@ def stats_img_data(tiff, chans_minmax=None):
         (
             img_chans_data[chan]["total"],
             img_chans_data[chan]["size"],
+            img_chans_data[chan]["perc"],
             img_chans_data[chan]["mean"],
             img_chans_data[chan]["stdev"],
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
-            img_chans_data[chan]["perc"],
             img_chans_data[chan]["score"],
         ) = get_stats(pixls, chans_minmax[chan])
     tiff["tiff"].close()
