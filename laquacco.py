@@ -140,16 +140,17 @@ def get_stats(array, chan_minmax=(None, None)):
     pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
     size = len(pixls)
     if chan_minmax[1]:  # get full stats and score
-        coeff = 0.1 # 0.21544346900318836
-        grate = 0.04 # 0.02666666666666667
+        # prepare scoring variables
+        coeff = 0.46415888336127786
+        grow = 1.3333333333333333
+        chan_max = chan_minmax[1]
         result = (  # iterate over pixels only once
             pixls.select([
                 pl.col("pixls").mean().alias("mean"),
                 pl.col("pixls").std().alias("stdev"),
                 pl.col("pixls").min().alias("min"),
                 pl.col("pixls").max().alias("max"),
-                (coeff * 10.0 ** (grate * pl.col("pixls") / chan_minmax[1]))\
-                .sum().alias("score")  # slow
+                (coeff * 10 ** (grow * pl.col("pixls") / chan_max)).sum().alias("score")  # slow
             ])
         )
         mean = result.select("mean").item()
@@ -170,8 +171,6 @@ def get_stats(array, chan_minmax=(None, None)):
     minimum = result.select("min").item()
     maximum = result.select("max").item()
     perc = size/total
-    if score:  # get mean value
-        score /= size
     return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
 
 
@@ -288,4 +287,3 @@ def stats_img_data(tiff, chans_minmax=None):
         ) = get_stats(pixls, chans_minmax[chan])
     tiff["tiff"].close()
     return img_chans_data
-
