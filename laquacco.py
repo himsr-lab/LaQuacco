@@ -142,24 +142,27 @@ def get_stats(array, chan_minmax=(None, None)):
     if chan_minmax[1] and size:  # get full stats and score
         # prepare scoring variables
         chan_max = chan_minmax[1]
-        peak = 3.0
-        center = 1.2278
-        width = -0.2529845758582912
         result = (  # iterate over pixels only once
             pixls.select([
                 pl.col("pixls").mean().alias("mean"),
                 pl.col("pixls").std().alias("stdev"),
                 pl.col("pixls").min().alias("min"),
                 pl.col("pixls").max().alias("max"),
-                (peak *\
-                 np.exp(-(((pl.col("pixls") / chan_max) - center) ** 2 / (2.0 * width ** 2))) \
-                ).sum().alias("score")  # slow
+                pl.when((pl.col("pixls") >= 0.25 * chan_max) & (pl.col("pixls") < 0.5 * chan_max))\
+                .then(1).otherwise(0).sum().alias("score_1"),
+                pl.when((pl.col("pixls") >= 0.5 * chan_max) & (pl.col("pixls") < 0.75 * chan_max))\
+                .then(1).otherwise(0).sum().alias("score_2"),
+                pl.when(pl.col("pixls") >= 0.75 * chan_max)\
+                .then(1).otherwise(0).sum().alias("score_3"),
             ])
         )
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
-        score = result.select("score").item()
+        score = 100.0 / size *\
+                (1.0 * result.select("score_1").item() +\
+                 10.0 * result.select("score_2").item() +\
+                 100.0 * result.select("score_3").item())
     else:  #  get minimal stats
         result = (
             pixls.select([
@@ -174,8 +177,6 @@ def get_stats(array, chan_minmax=(None, None)):
     minimum = result.select("min").item()
     maximum = result.select("max").item()
     perc = size/total
-    if score and size:
-        score = 100.0 * score / size
     return (total, size, mean, stdev, stderr, (minimum, maximum), perc, score)
 
 
