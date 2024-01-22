@@ -142,9 +142,9 @@ def get_stats(array, chan_minmax=(None, None)):
     if chan_minmax[1] and size:  # get full stats and score
         # prepare scoring variables
         chan_max = chan_minmax[1]
-        peak = 1.0
-        center = (0.25 + 1.0) / 2.0
-        width = (1.0 - 0.75) / 6.0
+        peak = 3.0
+        center = 1.2278
+        width = -0.2529845758582912
         result = (  # iterate over pixels only once
             pixls.select([
                 pl.col("pixls").mean().alias("mean"),
@@ -152,8 +152,8 @@ def get_stats(array, chan_minmax=(None, None)):
                 pl.col("pixls").min().alias("min"),
                 pl.col("pixls").max().alias("max"),
                 (peak *\
-                 np.exp(-(((pl.col("pixls") / chan_max) - center) ** 2 / (2.0 * width ** 2))) *\
-                 pl.col("pixls")).sum().alias("score")  # slow
+                 np.exp(-(((pl.col("pixls") / chan_max) - center) ** 2 / (2.0 * width ** 2))) \
+                ).sum().alias("score")  # slow
             ])
         )
         mean = result.select("mean").item()
