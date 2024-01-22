@@ -127,7 +127,7 @@ def get_run_slice(array, index, slice_margin):
     return slice
 
 
-def get_stats(array, chan_minmax=(None, None)):
+def get_stats(array, chan_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
 
@@ -135,9 +135,13 @@ def get_stats(array, chan_minmax=(None, None)):
     array -- Numpy array
     chan_min  -- signal threshold (maximum value of background)
     """
+    chan_mean = chan_stats[0]
+    chan_min = chan_stats[1]
+    chan_max = chan_stats[2]
+    scoring = chan_mean and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     total = len(arrow)
-    pixls = arrow.filter(pl.col('pixls') > chan_minmax[0])  # exclude background
+    pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
     size = len(pixls)
     perc = size/total
     mean = None
@@ -151,27 +155,29 @@ def get_stats(array, chan_minmax=(None, None)):
                  pl.col("pixls").std().alias("stdev"),
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
-        scores = chan_minmax[1]
-        if scores:
-            chan_max = chan_minmax[1]
+        if scoring:
+            chan_range = chan_max - chan_mean
+            lim_1 = chan_mean
+            lim_10 = chan_mean + 1.0/3.0 * chan_range
+            lim_100 = chan_mean + 2.0/3.0 * chan_range
             calcs.extend(
-                 [pl.when((pl.col("pixls") >= 0.25 * chan_max) & (pl.col("pixls") < 0.5 * chan_max))\
+                 [pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_10))\
                     .then(1).otherwise(0).sum().alias("score_1"),
-                  pl.when((pl.col("pixls") >= 0.5 * chan_max) & (pl.col("pixls") < 0.75 * chan_max))\
-                    .then(1).otherwise(0).sum().alias("score_2"),
-                  pl.when(pl.col("pixls") >= 0.75 * chan_max)\
-                    .then(1).otherwise(0).sum().alias("score_3")])
+                  pl.when((pl.col("pixls") >= lim_10) & (pl.col("pixls") < lim_100))\
+                    .then(1).otherwise(0).sum().alias("score_10"),
+                  pl.when(pl.col("pixls") >= lim_100)\
+                    .then(1).otherwise(0).sum().alias("score_100")])
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
-        if scores:
+        if scoring:
             score = 100.0 / size *\
                      (1.0 * result.select("score_1").item() +\
-                     10.0 * result.select("score_2").item() +\
-                     100.0 * result.select("score_3").item())
+                      10.0 * result.select("score_10").item() +\
+                      100.0 * result.select("score_100").item())
     return (total, size, perc, mean, stdev, stderr, (minimum, maximum), score)
 
 
@@ -257,12 +263,12 @@ def get_timestamp(timestamp):
     return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
-def stats_img_data(tiff, chans_minmax=None):
+def stats_img_data(tiff, chans_stats=None):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chans_min  -- signal thresholds (maximum values of backgrounds)
+    chans_stats  -- signal stats including mean, min, and max
     """
     img_chans_data = dict()
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
@@ -272,8 +278,8 @@ def stats_img_data(tiff, chans_minmax=None):
         img_chans_data["metadata"] = {
             "date_time": get_timestamp(page.tags["DateTime"].value)
         }
-        if not chans_minmax or chan not in chans_minmax:
-            chans_minmax = {chan: (0.0, None)}
+        if not chans_stats or chan not in chans_stats:
+            chans_stats = {chan: (None, 0.0, None)}
         # get statistics for channel
         img_chans_data[chan] = {}
         (
@@ -285,6 +291,6 @@ def stats_img_data(tiff, chans_minmax=None):
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
             img_chans_data[chan]["score"],
-        ) = get_stats(pixls, chans_minmax[chan])
+        ) = get_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
