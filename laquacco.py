@@ -133,7 +133,7 @@ def get_stats(array, chan_stats=(None, None, None)):
 
     Keyword arguments:
     array -- Numpy array
-    chan_min  -- signal threshold (maximum value of background)
+    chan_stats -- channel's statistics (mean, min, max)
     """
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
@@ -158,15 +158,15 @@ def get_stats(array, chan_stats=(None, None, None)):
         if scoring:
             chan_range = chan_max - chan_mean
             lim_1 = chan_mean
-            lim_10 = chan_mean + 1.0/3.0 * chan_range
-            lim_100 = chan_mean + 2.0/3.0 * chan_range
+            lim_2 = chan_mean + 1.0/3.0 * chan_range
+            lim_3 = chan_mean + 2.0/3.0 * chan_range
             calcs.extend(
-                 [pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_10))\
+                 [pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))\
                     .then(1).otherwise(0).sum().alias("score_1"),
-                  pl.when((pl.col("pixls") >= lim_10) & (pl.col("pixls") < lim_100))\
-                    .then(1).otherwise(0).sum().alias("score_10"),
-                  pl.when(pl.col("pixls") >= lim_100)\
-                    .then(1).otherwise(0).sum().alias("score_100")])
+                  pl.when((pl.col("pixls") >= lim_2) & (pl.col("pixls") < lim_3))\
+                    .then(1).otherwise(0).sum().alias("score_2"),
+                  pl.when(pl.col("pixls") >= lim_3)\
+                    .then(1).otherwise(0).sum().alias("score_3")])
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
@@ -176,8 +176,8 @@ def get_stats(array, chan_stats=(None, None, None)):
         if scoring:
             score = 100.0 / size *\
                      (1.0 * result.select("score_1").item() +\
-                      10.0 * result.select("score_10").item() +\
-                      100.0 * result.select("score_100").item())
+                      2.0 * result.select("score_2").item() +\
+                      3.0 * result.select("score_3").item())
     return (total, size, perc, mean, stdev, stderr, (minimum, maximum), score)
 
 
@@ -268,7 +268,7 @@ def stats_img_data(tiff, chans_stats=None):
 
     Keyword arguments:
     tiff -- TIFF dictionary
-    chans_stats  -- signal stats including mean, min, and max
+    chans_stats  -- channels' statistics (mean, min, and max)
     """
     img_chans_data = dict()
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
