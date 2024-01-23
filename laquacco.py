@@ -150,10 +150,10 @@ def get_stats(array, chan_stats=(None, None, None)):
     minimum = None
     maximum = None
     #score = None
+    band_0 = None
     band_1 = None
     band_2 = None
     band_3 = None
-    band_4 = None
     if size:
         calcs = [pl.col("pixls").mean().alias("mean"),
                  pl.col("pixls").std().alias("stdev"),
