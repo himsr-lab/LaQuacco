@@ -138,7 +138,7 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
     chan_max = chan_stats[2]
-    scoring = chan_mean and chan_max
+    bands = chan_mean and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     total = len(arrow)
     pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
@@ -149,36 +149,61 @@ def get_stats(array, chan_stats=(None, None, None)):
     stderr = None
     minimum = None
     maximum = None
-    score = None
+    #score = None
+    band_1 = None
+    band_2 = None
+    band_3 = None
+    band_4 = None
     if size:
         calcs = [pl.col("pixls").mean().alias("mean"),
                  pl.col("pixls").std().alias("stdev"),
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
-        if scoring:
-            chan_range = chan_max - chan_mean
-            lim_1 = chan_mean
-            lim_2 = chan_mean + 1.0/3.0 * chan_range
-            lim_3 = chan_mean + 2.0/3.0 * chan_range
+        if bands:
+            bands_range = chan_max - chan_mean
+            lim_1 = chan_mean + 1.0/3.0 * bands_range
+            lim_2 = chan_mean + 2.0/3.0 * bands_range
             calcs.extend(
-                 [pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))\
-                    .then(1).otherwise(0).sum().alias("score_1"),
-                  pl.when((pl.col("pixls") >= lim_2) & (pl.col("pixls") < lim_3))\
-                    .then(1).otherwise(0).sum().alias("score_2"),
-                  pl.when(pl.col("pixls") >= lim_3)\
-                    .then(1).otherwise(0).sum().alias("score_3")])
+                [pl.col("pixls").filter(
+                    (pl.col("pixls") < chan_mean))
+                        .mean().alias("band_0"),
+                 pl.col("pixls").filter(
+                     (pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
+                        .mean().alias("band_1"),
+                 pl.col("pixls").filter(
+                     (pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
+                        .mean().alias("band_2"),
+                 pl.col("pixls").filter(
+                     (pl.col("pixls") >= lim_2))
+                        .mean().alias("band_3")])
+            """
+            [pl.when((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))\
+               .then(1).otherwise(0).sum().alias("band_1"),
+             pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))\
+               .then(1).otherwise(0).sum().alias("band_2"),
+             pl.when(pl.col("pixls") >= lim_2)\
+               .then(1).otherwise(0).sum().alias("band_3")])
+            """
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
-        if scoring:
+        if bands:
+            band_1 = result.select("band_1").item()
+            band_2 = result.select("band_2").item()
+            band_3 = result.select("band_3").item()
+            band_4 = result.select("band_4").item()
+            """
             score = 100.0 / size *\
-                     (1.0 * result.select("score_1").item() +\
-                      2.0 * result.select("score_2").item() +\
-                      3.0 * result.select("score_3").item())
-    return (total, size, perc, mean, stdev, stderr, (minimum, maximum), score)
+                     (1.0 * result.select("band_1").item() +\
+                      2.0 * result.select("band_2").item() +\
+                      3.0 * result.select("band_3").item())
+            """
+    return (total, size, perc, mean, stdev, stderr,
+           (minimum, maximum),
+           (band_0, band_1, band_2, band_3))
 
 
 def get_tiff(image):
@@ -290,7 +315,7 @@ def stats_img_data(tiff, chans_stats=None):
             img_chans_data[chan]["stdev"],
             img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
-            img_chans_data[chan]["score"],
+            img_chans_data[chan]["bands"],
         ) = get_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
