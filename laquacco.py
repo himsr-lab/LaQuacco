@@ -191,10 +191,10 @@ def get_stats(array, chan_stats=(None, None, None)):
         minimum = result.select("min").item()
         maximum = result.select("max").item()
         if bands:
+            band_0 = result.select("band_0").item()
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-            band_4 = result.select("band_4").item()
             """
             score = 100.0 / size *\
                      (1.0 * result.select("band_1").item() +\
