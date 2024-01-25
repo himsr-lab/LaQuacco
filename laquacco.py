@@ -27,7 +27,7 @@ def get_chan(page):
     return chan
 
 
-def get_chan_data(imgs_chans_data, chan, data):
+def get_chan_data(imgs_chans_data, chan, data, length=1):
     """Returns channel data from image data dictionaries.
     Works across all images to retrieve the channel data.
 
@@ -35,13 +35,14 @@ def get_chan_data(imgs_chans_data, chan, data):
     imgs_chans_data -- dictionaries with image data
     chan -- the key determining the channel value
     data -- the key determining the channel data
+    length -- length of the data tuple
     """
     chan_data = []
     for _img, chans_data in imgs_chans_data.items():
         if chan in chans_data and chan not in ["metadata"]:
             chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
-            chan_data.append(None)
+            chan_data.append(tuple(None for n in range(0, length)))
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
     chan_data[chan_data is None] = np.nan
