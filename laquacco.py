@@ -157,16 +157,16 @@ def get_stats(array, chan_stats=(None, None, None)):
             lim_2 = chan_mean + 2.0/3.0 * bands_range
             calcs.extend(
                 [pl.col("pixls").filter(
-                    (pl.col("pixls") < chan_mean))
+                    (pl.col("pixls") <= chan_mean))
                         .mean().alias("band_0"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
+                     (pl.col("pixls") > chan_mean) & (pl.col("pixls") <= lim_1))
                         .mean().alias("band_1"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
+                     (pl.col("pixls") > lim_1) & (pl.col("pixls") <= lim_2))
                         .mean().alias("band_2"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_2))
+                     (pl.col("pixls") > lim_2))
                         .mean().alias("band_3")])
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
