@@ -140,7 +140,7 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
     chan_max = chan_stats[2]
-    bands = chan_mean and chan_max
+    bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
     total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
@@ -157,16 +157,16 @@ def get_stats(array, chan_stats=(None, None, None)):
             lim_2 = chan_mean + 2.0/3.0 * bands_range
             calcs.extend(
                 [pl.col("pixls").filter(
-                    (pl.col("pixls") <= chan_mean))
+                    (pl.col("pixls") < chan_mean))
                         .mean().alias("band_0"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") > chan_mean) & (pl.col("pixls") <= lim_1))
+                     (pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
                         .mean().alias("band_1"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") > lim_1) & (pl.col("pixls") <= lim_2))
+                     (pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
                         .mean().alias("band_2"),
                  pl.col("pixls").filter(
-                     (pl.col("pixls") > lim_2))
+                     (pl.col("pixls") >= lim_2))
                         .mean().alias("band_3")])
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
