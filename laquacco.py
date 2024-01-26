@@ -144,9 +144,8 @@ def get_stats(array, chan_stats=(None, None, None)):
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
     total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
-    mean, stdev, stderr = None, None, None
-    minimum, maximum = None, None
-    band_0, band_1, band_2, band_3 = None, None, None
+    mean, stdev, stderr, minimum, maximum = None, None, None, None, None
+    band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
         calcs = [pl.col("pixls").mean().alias("mean"),
                  pl.col("pixls").std().alias("stdev"),
@@ -180,8 +179,7 @@ def get_stats(array, chan_stats=(None, None, None)):
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-    return (total, size, perc, mean, stdev, stderr,
-           (minimum, maximum),
+    return (total, size, perc, mean, stdev, stderr, (minimum, maximum),
            (band_0, band_1, band_2, band_3))
 
 
