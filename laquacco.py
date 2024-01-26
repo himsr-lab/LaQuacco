@@ -38,11 +38,12 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     length -- length of the data tuple
     """
     chan_data = []
+    empty = tuple(None for n in range(0, length)) if length > 1 else None
     for _img, chans_data in imgs_chans_data.items():
         if chan in chans_data and chan not in ["metadata"]:
             chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
-            chan_data.append(tuple(None for n in range(0, length)))
+            chan_data.append(empty)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
     chan_data[chan_data is None] = np.nan
@@ -139,22 +140,12 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
     chan_max = chan_stats[2]
-    bands = chan_mean and chan_max
+    bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    total = len(arrow)
     pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
-    size = len(pixls)
-    perc = size/total
-    mean = None
-    stdev = None
-    stderr = None
-    minimum = None
-    maximum = None
-    #score = None
-    band_0 = None
-    band_1 = None
-    band_2 = None
-    band_3 = None
+    total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
+    mean, stdev, stderr, minimum, maximum = None, None, None, None, None
+    band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
         calcs = [pl.col("pixls").mean().alias("mean"),
                  pl.col("pixls").std().alias("stdev"),
@@ -177,14 +168,6 @@ def get_stats(array, chan_stats=(None, None, None)):
                  pl.col("pixls").filter(
                      (pl.col("pixls") >= lim_2))
                         .mean().alias("band_3")])
-            """
-            [pl.when((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))\
-               .then(1).otherwise(0).sum().alias("band_1"),
-             pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))\
-               .then(1).otherwise(0).sum().alias("band_2"),
-             pl.when(pl.col("pixls") >= lim_2)\
-               .then(1).otherwise(0).sum().alias("band_3")])
-            """
         result = pixls.select(calcs)  # iterate over pixels only once
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
@@ -196,14 +179,7 @@ def get_stats(array, chan_stats=(None, None, None)):
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-            """
-            score = 100.0 / size *\
-                     (1.0 * result.select("band_1").item() +\
-                      2.0 * result.select("band_2").item() +\
-                      3.0 * result.select("band_3").item())
-            """
-    return (total, size, perc, mean, stdev, stderr,
-           (minimum, maximum),
+    return (total, size, perc, mean, stdev, stderr, (minimum, maximum),
            (band_0, band_1, band_2, band_3))
 
 
