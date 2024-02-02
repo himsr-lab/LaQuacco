@@ -112,23 +112,6 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_run_slice(array, index, slice_margin):
-    """Returns the slice of an array centered at the index
-     with a margin of elements included before and after.
-
-    Keyword arguments:
-    array -- Numpy array
-    index  -- center position of the slice
-    margin  -- element count before and after index
-    """
-    slice = np.empty(0)
-    if array.size > 0:
-        slice = array[
-            max(0, index - slice_margin) : min(index + slice_margin + 1, array.size)
-        ]
-    return slice
-
-
 def get_stats(array, chan_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
@@ -156,6 +139,7 @@ def get_stats(array, chan_stats=(None, None, None)):
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
         if get_bands:
+            # [0---band_0---(mean)---band_1---|---band_2---|---band_3---(max)]
             bands_range = chan_max - chan_mean
             lim_1 = chan_mean + 1.0/3.0 * bands_range
             lim_2 = chan_mean + 2.0/3.0 * bands_range
