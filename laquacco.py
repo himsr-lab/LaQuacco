@@ -140,22 +140,23 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
     chan_max = chan_stats[2]
-    bands = chan_mean and chan_min and chan_max
+    get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
     total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
     mean, stdev, stderr, minimum, maximum = None, None, None, None, None
     band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
-        calcs = [pl.col("pixls").mean().alias("mean"),
+        # prepare vectors calculations
+        stats = [pl.col("pixls").mean().alias("mean"),
                  pl.col("pixls").std().alias("stdev"),
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
-        if bands:
+        if get_bands:
             bands_range = chan_max - chan_mean
             lim_1 = chan_mean + 1.0/3.0 * bands_range
             lim_2 = chan_mean + 2.0/3.0 * bands_range
-            calcs.extend(
+            stats.extend(
                 [pl.col("pixls").filter(
                     (pl.col("pixls") < chan_mean))
                         .mean().alias("band_0"),
@@ -168,13 +169,15 @@ def get_stats(array, chan_stats=(None, None, None)):
                  pl.col("pixls").filter(
                      (pl.col("pixls") >= lim_2))
                         .mean().alias("band_3")])
-        result = pixls.select(calcs)  # iterate over pixels only once
+        # apply vector calculations
+        result = pixls.select(stats)  # iterate over pixels only once
+        # retrieve vector calculations
         mean = result.select("mean").item()
         stdev = result.select("stdev").item()
         stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
-        if bands:
+        if get_bands:
             band_0 = result.select("band_0").item()
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
