@@ -142,7 +142,10 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_max = chan_stats[2]
     get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
+    if get_bands:
+        pixls = arrow.filter(pl.col('pixls') >= chan_min)  # exclude below-threshold regions
+    else:
+        pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude non-signal regions
     total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
     mean, stdev, stderr, minimum, maximum = None, None, None, None, None
     band_0, band_1, band_2, band_3 = None, None, None, None
