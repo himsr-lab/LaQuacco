@@ -1,11 +1,34 @@
 import datetime
 import fnmatch
 import os
+import shutil
+import tempfile
 import tifffile
 import time
 import xmltodict
 import numpy as np
 import polars as pl
+
+
+def copy_tiff(image):
+    """ Create a local temporary file and copy a (remote) image file to
+        the path of the temporary file. `shutil.copy` may use platform-specific
+        “fast-copy” syscalls and is usually faster than accessing (remote)
+        image files via Samba network shares directly.
+
+    Keyword arguments:
+    image -- image file
+    """
+    temp = "tmp_file"
+    with tempfile.NamedTemporaryFile(mode='w+b',
+                                     buffering=0,
+                                     encoding=None,
+                                     newline=None,
+                                     delete=False,  # keep, remove later
+                                     errors=None,) as temp:
+        temp = temp.name  # get file path
+    shutil.copyfile(image, temp)  # overwrite
+    return temp
 
 
 def get_chan(page):
