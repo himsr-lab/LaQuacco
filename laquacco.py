@@ -1,7 +1,8 @@
 import datetime
 import fnmatch
 import os
-import shutil
+import platform
+import subprocess
 import tempfile
 import tifffile
 import time
@@ -11,24 +12,39 @@ import polars as pl
 
 
 def copy_tiff(image):
-    """ Create a local temporary file and copy a (remote) image file to
-        the path of the temporary file. `shutil.copy` may use platform-specific
-        “fast-copy” syscalls and is usually faster than accessing (remote)
-        image files via Samba network shares directly.
+    """ Create a local file copy from a (remote) image file. Use the operating systems'
+        native commands to transfer the file. Python's `shutil` file copy can't make
+        use of the maximum transfer speeds for network connections.
 
     Keyword arguments:
     image -- image file
     """
-    temp = "tmp_file"
-    with tempfile.NamedTemporaryFile(mode='w+b',
-                                     buffering=0,
-                                     encoding=None,
-                                     newline=None,
-                                     delete=False,  # keep, remove later
-                                     errors=None,) as temp:
-        temp = temp.name  # get file path
-    shutil.copyfile(image, temp)  # overwrite
-    return temp
+    src_dir, src_file = os.path.split(os.path.abspath(image))
+    dst_dir = tempfile.gettempdir()
+
+    platform_name = platform.system()
+    if platform_name == "Windows":
+        try:
+            command = ["ROBOCOPY",
+                       src_dir,
+                       dst_dir,
+                       src_file,
+                       "/COMPRESS",  # request network compression during transfer
+                       "/MT[8]"]  # do multithreaded copies with 8 threads (default)
+            subprocess.run(command)  # don't check, successful copy exits with 1
+        except subprocess.CalledProcessError as err:
+            print(f"Failed to copy file. Error was:\n{err}")
+    elif platform_name in ["Darwin", "Linux"]:
+        try:
+            command = ["cp",
+                       os.path.join(src_dir, src_file),
+                       os.path.join(dst_dir, src_file),
+                       "-v"]  # verbose output
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as err:
+            print(f"Failed to copy file. Error was:\n{err}")
+
+    return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
 def get_chan(page):
