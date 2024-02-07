@@ -1,5 +1,6 @@
 import datetime
 import fnmatch
+import multiprocessing
 import os
 import platform
 import subprocess
@@ -8,6 +9,8 @@ import tifffile
 import time
 import xmltodict
 import numpy as np
+
+os.environ["POLARS_MAX_THREADS"] = str(multiprocessing.cpu_count() // 2) or str(1)  # set before import
 import polars as pl
 
 
