@@ -1,6 +1,5 @@
 import datetime
 import fnmatch
-import multiprocessing
 import os
 import platform
 import subprocess
@@ -11,9 +10,9 @@ import numpy as np  # single-threaded function calls, multi-threaded BLAS backen
 
 # limit pool size for multi-threading
 try:  # macOS, Linux
-    available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)
+    available_cpu = str(len(os.sched_getaffinity(0)) // 4 or 1)
 except AttributeError:  # Windows
-    available_cpu = str(multiprocessing.cpu_count() // 2 or 1)
+    available_cpu = str(os.cpu_count() // 4 or 1)
 
 # set environmental variables before imports
 os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
