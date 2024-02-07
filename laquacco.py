@@ -6,15 +6,15 @@ import subprocess
 import tempfile
 import time
 import xmltodict
-import numpy as np
+import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
 
-available_cpu = len(os.sched_getaffinity(0)) // 2 or 1  # set before imports
+available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)  # set before imports
 
-os.environ["TIFFFILE_NUM_THREADS"] = str(available_cpu)  # for de/compressing segments
-os.environ["TIFFFILE_NUM_IOTHREADS"] = str(available_cpu)  # for reading file sequences
+os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
+os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
 import tifffile
 
-os.environ["POLARS_MAX_THREADS"] = str(available_cpu)  # used to initialize thread pool
+os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 import polars as pl
 
 
@@ -37,7 +37,7 @@ def copy_tiff(image):
                        dst_dir,
                        src_file,
                        "/COMPRESS",  # request network compression during transfer
-                       "/MT[8]"]  # do multithreaded copies with 8 threads (default)
+                       "/MT[" + available_cpu + "]"]  # do multithreaded copies (default)
             subprocess.run(command)  # don't check, successful copy exits with 1
         except subprocess.CalledProcessError as err:
             print(f"Failed to copy file. Error was:\n{err}")
