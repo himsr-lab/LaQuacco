@@ -1,5 +1,6 @@
 import datetime
 import fnmatch
+import multiprocessing
 import os
 import platform
 import subprocess
@@ -8,12 +9,16 @@ import time
 import xmltodict
 import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
 
-available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)  # set before imports
+# limit pool size for multi-threading
+try:  # macOS, Linux
+    available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)
+except AttributeError:  # Windows
+    available_cpu = str(multiprocessing.cpu_count() // 2 or 1)
 
+# set environmental variables before imports
 os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
 os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
 import tifffile
-
 os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 import polars as pl
 
