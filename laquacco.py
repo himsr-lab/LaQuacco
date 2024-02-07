@@ -1,16 +1,20 @@
 import datetime
 import fnmatch
-import multiprocessing
 import os
 import platform
 import subprocess
 import tempfile
-import tifffile
 import time
 import xmltodict
 import numpy as np
 
-os.environ["POLARS_MAX_THREADS"] = str(multiprocessing.cpu_count() // 2) or str(1)  # set before import
+available_cpu = len(os.sched_getaffinity(0)) // 2 or 1  # set before imports
+
+os.environ["TIFFFILE_NUM_THREADS"] = str(available_cpu)  # for de/compressing segments
+os.environ["TIFFFILE_NUM_IOTHREADS"] = str(available_cpu)  # for reading file sequences
+import tifffile
+
+os.environ["POLARS_MAX_THREADS"] = str(available_cpu)  # used to initialize thread pool
 import polars as pl
 
 
