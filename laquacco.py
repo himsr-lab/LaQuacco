@@ -168,13 +168,12 @@ def get_stats(array, chan_stats=(None, None, None)):
         pixls = arrow.filter(pl.col('pixls') >= chan_min)  # exclude below-threshold regions
     else:
         pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude non-signal regions
-    total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
-    mean, stdev, stderr, minimum, maximum = None, None, None, None, None
+    total, size = len(arrow), len(pixls)
+    mean, minimum, maximum = None, None, None
     band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
         # prepare vectors calculations
         stats = [pl.col("pixls").mean().alias("mean"),
-                 pl.col("pixls").std().alias("stdev"),
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
         if get_bands:
@@ -199,8 +198,6 @@ def get_stats(array, chan_stats=(None, None, None)):
         result = pixls.select(stats)  # iterate over pixels only once
         # retrieve vector calculations
         mean = result.select("mean").item()
-        stdev = result.select("stdev").item()
-        stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
         if get_bands:
@@ -208,7 +205,7 @@ def get_stats(array, chan_stats=(None, None, None)):
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-    return (total, size, perc, mean, stdev, stderr, (minimum, maximum),
+    return (total, size, mean, (minimum, maximum),
            (band_0, band_1, band_2, band_3))
 
 
@@ -316,10 +313,7 @@ def stats_img_data(tiff, chans_stats=None):
         (
             img_chans_data[chan]["total"],
             img_chans_data[chan]["size"],
-            img_chans_data[chan]["perc"],
             img_chans_data[chan]["mean"],
-            img_chans_data[chan]["stdev"],
-            img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
             img_chans_data[chan]["bands"],
         ) = get_stats(pixls, chans_stats[chan])
