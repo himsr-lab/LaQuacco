@@ -1,11 +1,61 @@
 import datetime
 import fnmatch
 import os
-import tifffile
+import platform
+import subprocess
+import tempfile
 import time
 import xmltodict
-import numpy as np
+import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
+
+# limit pool size for multi-threading
+try:  # macOS, Linux
+    available_cpu = str(len(os.sched_getaffinity(0)) // 4 or 1)
+except AttributeError:  # Windows
+    available_cpu = str(os.cpu_count() // 4 or 1)
+
+# set environmental variables before imports
+os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
+os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
+import tifffile
+os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 import polars as pl
+
+
+def copy_tiff(image):
+    """ Create a local file copy from a (remote) image file. Use the operating systems'
+        native commands to transfer the file. Python's `shutil` file copy can't make
+        use of the maximum transfer speeds for network connections.
+
+    Keyword arguments:
+    image -- image file
+    """
+    src_dir, src_file = os.path.split(os.path.abspath(image))
+    dst_dir = tempfile.gettempdir()
+
+    platform_name = platform.system()
+    if platform_name == "Windows":
+        try:
+            command = ["ROBOCOPY",
+                       src_dir,
+                       dst_dir,
+                       src_file,
+                       "/COMPRESS",  # request network compression during transfer
+                       "/MT[" + available_cpu + "]"]  # do multithreaded copies (default)
+            subprocess.run(command)  # don't check, successful copy exits with 1
+        except subprocess.CalledProcessError as err:
+            print(f"Failed to copy file. Error was:\n{err}")
+    elif platform_name in ["Darwin", "Linux"]:
+        try:
+            command = ["cp",
+                       os.path.join(src_dir, src_file),
+                       os.path.join(dst_dir, src_file),
+                       "-v"]  # verbose output
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as err:
+            print(f"Failed to copy file. Error was:\n{err}")
+
+    return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
 def get_chan(page):
@@ -129,13 +179,12 @@ def get_stats(array, chan_stats=(None, None, None)):
         pixls = arrow.filter(pl.col('pixls') >= chan_min)  # exclude below-threshold regions
     else:
         pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude non-signal regions
-    total, size, perc = len(arrow), len(pixls), len(pixls)/len(arrow)
-    mean, stdev, stderr, minimum, maximum = None, None, None, None, None
+    total, size = len(arrow), len(pixls)
+    mean, minimum, maximum = None, None, None
     band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
         # prepare vectors calculations
         stats = [pl.col("pixls").mean().alias("mean"),
-                 pl.col("pixls").std().alias("stdev"),
                  pl.col("pixls").min().alias("min"),
                  pl.col("pixls").max().alias("max")]
         if get_bands:
@@ -160,8 +209,6 @@ def get_stats(array, chan_stats=(None, None, None)):
         result = pixls.select(stats)  # iterate over pixels only once
         # retrieve vector calculations
         mean = result.select("mean").item()
-        stdev = result.select("stdev").item()
-        stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
         if get_bands:
@@ -169,7 +216,7 @@ def get_stats(array, chan_stats=(None, None, None)):
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-    return (total, size, perc, mean, stdev, stderr, (minimum, maximum),
+    return (total, size, mean, (minimum, maximum),
            (band_0, band_1, band_2, band_3))
 
 
@@ -277,10 +324,7 @@ def stats_img_data(tiff, chans_stats=None):
         (
             img_chans_data[chan]["total"],
             img_chans_data[chan]["size"],
-            img_chans_data[chan]["perc"],
             img_chans_data[chan]["mean"],
-            img_chans_data[chan]["stdev"],
-            img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
             img_chans_data[chan]["bands"],
         ) = get_stats(pixls, chans_stats[chan])
