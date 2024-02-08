@@ -49,8 +49,7 @@ def copy_tiff(image):
         try:
             command = ["cp",
                        os.path.join(src_dir, src_file),
-                       os.path.join(dst_dir, src_file),
-                       "-v"]  # verbose output
+                       os.path.join(dst_dir, src_file)]
             subprocess.run(command, check=True)
         except subprocess.CalledProcessError as err:
             print(f"Failed to copy file. Error was:\n{err}")
