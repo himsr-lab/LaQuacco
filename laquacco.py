@@ -97,22 +97,6 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     return chan_data
 
 
-def get_chan_img(tiff, channel):
-    """Get the channel image from a TIFF dictionary.
-
-    Keyword arguments:
-    tiff -- TIFF dictionary
-    channel -- channel name
-    """
-    pixls = np.zeros((tiff["shape"][1:]))  # pre-allocate
-    for page in tiff["pages"]:
-        chan = get_chan(page)
-        if chan == channel:
-            page.asarray(out=pixls)  # in-place
-    tiff["tiff"].close()
-    return pixls
-
-
 def get_files(path="", pat=None, anti=None, recurse=False):
     """Iterate through all files in a directory structure and
     return a list of matching files.
