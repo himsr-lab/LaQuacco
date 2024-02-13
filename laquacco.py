@@ -5,6 +5,7 @@ import platform
 import subprocess
 import tempfile
 import time
+import xml
 import xmltodict
 import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
 
@@ -61,16 +62,18 @@ def get_chan(page):
     Keyword arguments:
     page -- the TIFF page
     """
-    try:
-        chan = page.tags["PageName"].value  # regular TIFF
-    except KeyError:
-        img_descr = page.tags["ImageDescription"].value  # OME-TIFF
-        img_dict = xmltodict.parse(img_descr)
-        vendor_id = next(iter(img_dict))  # only key
+    chan = None
+    img_descr = page.tags["ImageDescription"].value  # OME-TIFF (XML) or MIBITIFF (JSON)
+    if img_descr:
         try:
+            img_dict = xmltodict.parse(img_descr)
+            vendor_id = next(iter(img_dict))  # only key
             chan = img_dict[vendor_id]["Name"]
-        except KeyError:
-            chan = None
+            marker = img_dict[vendor_id].get("Biomarker", None)  # might be missing
+            if marker:
+                chan = f"{marker} ({chan})"
+        except xml.parsers.expat.ExpatError:  # invalid XML
+            chan = page.tags["PageName"].value  # regular TIFF
     return chan
 
 
