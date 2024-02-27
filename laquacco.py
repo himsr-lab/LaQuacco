@@ -81,7 +81,7 @@ def copy_tiff(image):
             subprocess.run(command)  # don't check, successful copy exits with 1
         except subprocess.CalledProcessError as err:
             print(f"Failed to copy file. Error was:\n{err}")
-
+    # return temp file path of (remote) file after copy
     return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
