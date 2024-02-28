@@ -52,16 +52,20 @@ os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread po
 import polars as pl
 
 
-def copy_tiff(image):
-    """ Create a local file copy from a (remote) image file. Use the operating systems'
-        native commands to transfer the file. Python's `shutil` file copy can't make
-        use of the maximum transfer speeds for network connections.
+def copy_file(src_path="", dst_path=""):
+    """ Use the operating systems native commands to copy a remote source file
+        to a local destination file. If the destination directory does not exist,
+        this function will create a temporary destination directiory first.
+        Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
+        required for network connections, so we're using system-native commands instead.
 
     Keyword arguments:
-    image -- image file
+    src_file  -- (remote) source file path
+    dst_file  -- temporary destination file path
     """
-    src_dir, src_file = os.path.split(os.path.abspath(image))
-    dst_dir = tempfile.gettempdir()
+    src_dir, src_file = os.path.split(os.path.abspath(src_path))
+    dst_dir, dst_file = os.path.split(os.path.abspath(dst_path)) if dst_path \
+                        else (tempfile.mkdtemp(), src_file)
     platform_name = platform.system()
     if platform_name in ["Darwin", "Linux"]:
         try:
@@ -81,7 +85,6 @@ def copy_tiff(image):
             subprocess.run(command)  # don't check, successful copy exits with 1
         except subprocess.CalledProcessError as err:
             print(f"Failed to copy file. Error was:\n{err}")
-    # return temp file path of (remote) file after copy
     return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
