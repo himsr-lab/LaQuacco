@@ -63,32 +63,20 @@ def copy_file(src_path="", dst_path=""):
     src_file  -- (remote) source file path
     dst_file  -- (temporary) destination file path
     """
-    src_dir, src_file = os.path.split(os.path.abspath(src_path))
-    dst_dir, dst_file = os.path.split(os.path.abspath(dst_path)) if dst_path \
-                        else (tempfile.mkdtemp(), src_file)
-    platform_name = platform.system()
-    if platform_name in ["Darwin", "Linux"]:
-        try:
-            command = ["cp",
-                       os.path.join(src_dir, src_file),
-                       os.path.join(dst_dir, src_file)]
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as err:
-            print(f"Failed to copy file. Error was:\n{err}")
-    elif platform_name == "Windows":
-        try:
-            command = ["ROBOCOPY",
-                       src_dir,
-                       dst_dir,
-                       src_file,
-                       "/COMPRESS", # request network compression during transfer
-                       "/NJH",  # no job header display
-                       "/NJS",  #  no job summary display
-                       "/NP",  # no progress display
-                      ]
-            subprocess.run(command)  # don't check, successful copy exits with 1
-        except subprocess.CalledProcessError as err:
-            print(f"Failed to copy file. Error was:\n{err}")
+    src_path = os.path.abspath(src_path)
+    src_dir, src_file = os.path.split(src_path)
+    dst_path = os.path.abspath(dst_path) if dst_path \
+                                         else os.path.join(tempfile.mkdtemp(), src_file)
+    dst_dir, dst_file = os.path.split(dst_path)
+    command = {
+        "Darwin":  ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Linux":   ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Windows": ["ROBOCOPY", src_dir, dst_dir, src_file, "/COMPRESS", "/NJH", "/NJS", "/NP"]
+    }.get(platform.system())
+    try:
+        subprocess.run(command, check=platform.system() != "Windows")
+    except subprocess.CalledProcessError as err:
+        print(f"Failed to copy file. Error was:\n{err}")
     return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
