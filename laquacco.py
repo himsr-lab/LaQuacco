@@ -53,15 +53,15 @@ import polars as pl
 
 
 def copy_file(src_path="", dst_path=""):
-    """ Use the operating systems native commands to copy a remote source file
-        to a local destination file. If the destination directory does not exist,
+    """ Use the operating systems' native commands to copy a (remote) source file
+        to a (temporary) destination file. If the destination directory does not exist,
         this function will create a temporary destination directiory first.
         Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
         required for network connections, so we're using system-native commands instead.
 
     Keyword arguments:
     src_file  -- (remote) source file path
-    dst_file  -- temporary destination file path
+    dst_file  -- (temporary) destination file path
     """
     src_dir, src_file = os.path.split(os.path.abspath(src_path))
     dst_dir, dst_file = os.path.split(os.path.abspath(dst_path)) if dst_path \
