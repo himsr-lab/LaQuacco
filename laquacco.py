@@ -18,7 +18,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v1.0 (2024-02-14)
+Summary:    Laboratory Quality Control v1.0 (2024-03-08)
 DOI:        # TODO
 URL:        https://github.com/christianrickert/LaQuacco
 
@@ -81,7 +81,11 @@ def copy_file(src_path="", dst_path=""):
                        src_dir,
                        dst_dir,
                        src_file,
-                       "/COMPRESS"]  # request network compression during transfer
+                       "/COMPRESS", # request network compression during transfer
+                       "/NJH",  # no job header display
+                       "/NJS",  #  no job summary display
+                       "/NP",  # no progress display
+                      ]
             subprocess.run(command)  # don't check, successful copy exits with 1
         except subprocess.CalledProcessError as err:
             print(f"Failed to copy file. Error was:\n{err}")
