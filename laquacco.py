@@ -48,12 +48,13 @@ except AttributeError:  # Windows
 os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
 os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
 import tifffile
+
 os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 import polars as pl
 
 
 def copy_file(src_path="", dst_path=""):
-    """ Use the operating systems' native commands to copy a (remote) source file
+    """Use the operating systems' native commands to copy a (remote) source file
         to a (temporary) destination file. If the destination directory does not exist,
         this function will create a temporary destination directiory first.
         Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
@@ -65,13 +66,25 @@ def copy_file(src_path="", dst_path=""):
     """
     src_path = os.path.abspath(src_path)
     src_dir, src_file = os.path.split(src_path)
-    dst_path = os.path.abspath(dst_path) if dst_path \
-                                         else os.path.join(tempfile.mkdtemp(), src_file)
+    dst_path = (
+        os.path.abspath(dst_path)
+        if dst_path
+        else os.path.join(tempfile.mkdtemp(), src_file)
+    )
     dst_dir, dst_file = os.path.split(dst_path)
     command = {
-        "Darwin":  ["cp", src_path, os.path.join(dst_dir, src_file)],
-        "Linux":   ["cp", src_path, os.path.join(dst_dir, src_file)],
-        "Windows": ["ROBOCOPY", src_dir, dst_dir, src_file, "/COMPRESS", "/NJH", "/NJS", "/NP"]
+        "Darwin": ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Linux": ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Windows": [
+            "ROBOCOPY",
+            src_dir,
+            dst_dir,
+            src_file,
+            "/COMPRESS",
+            "/NJH",
+            "/NJS",
+            "/NP",
+        ],
     }.get(platform.system())
     try:
         subprocess.run(command, check=platform.system() != "Windows")
@@ -184,35 +197,46 @@ def get_stats(array, chan_stats=(None, None, None)):
     get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     if get_bands:
-        pixls = arrow.filter(pl.col('pixls') >= chan_min)  # exclude below-threshold regions
+        pixls = arrow.filter(
+            pl.col("pixls") >= chan_min
+        )  # exclude below-threshold regions
     else:
-        pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude non-signal regions
+        pixls = arrow.filter(pl.col("pixls") > chan_min)  # exclude non-signal regions
     total, size = len(arrow), len(pixls)
     mean, minimum, maximum = None, None, None
     band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
         # prepare vectors calculations
-        stats = [pl.col("pixls").mean().alias("mean"),
-                 pl.col("pixls").min().alias("min"),
-                 pl.col("pixls").max().alias("max")]
+        stats = [
+            pl.col("pixls").mean().alias("mean"),
+            pl.col("pixls").min().alias("min"),
+            pl.col("pixls").max().alias("max"),
+        ]
         if get_bands:
             # [0---band_0---(mean)---band_1---|---band_2---|---band_3---(max)]
             bands_range = chan_max - chan_mean
-            lim_1 = chan_mean + 1.0/3.0 * bands_range
-            lim_2 = chan_mean + 2.0/3.0 * bands_range
+            lim_1 = chan_mean + 1.0 / 3.0 * bands_range
+            lim_2 = chan_mean + 2.0 / 3.0 * bands_range
             stats.extend(
-                [pl.col("pixls").filter(
-                    (pl.col("pixls") < chan_mean))
-                        .mean().alias("band_0"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
-                        .mean().alias("band_1"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
-                        .mean().alias("band_2"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_2))
-                        .mean().alias("band_3")])
+                [
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") < chan_mean))
+                    .mean()
+                    .alias("band_0"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
+                    .mean()
+                    .alias("band_1"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
+                    .mean()
+                    .alias("band_2"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= lim_2))
+                    .mean()
+                    .alias("band_3"),
+                ]
+            )
         # apply vector calculations
         result = pixls.select(stats)  # iterate over pixels only once
         # retrieve vector calculations
@@ -224,8 +248,7 @@ def get_stats(array, chan_stats=(None, None, None)):
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-    return (total, size, mean, (minimum, maximum),
-           (band_0, band_1, band_2, band_3))
+    return (total, size, mean, (minimum, maximum), (band_0, band_1, band_2, band_3))
 
 
 def get_tiff(image):
