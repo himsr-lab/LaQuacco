@@ -100,10 +100,10 @@ def get_chan(page):
     page -- the TIFF page
     """
     chan = None
-    img_descr = page.tags["ImageDescription"].value  # OME-TIFF (XML) or MIBITIFF (JSON)
+    img_descr = page.tags.get("ImageDescription", None)  # OME-TIFF (XML) or MIBITIFF (JSON)
     if img_descr:
         try:
-            img_dict = xmltodict.parse(img_descr)
+            img_dict = xmltodict.parse(img_descr.value)
             vendor_id = next(iter(img_dict))  # only key
             chan = img_dict[vendor_id]["Name"]
             marker = img_dict[vendor_id].get("Biomarker", None)  # might be missing
