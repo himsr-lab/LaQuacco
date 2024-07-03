@@ -100,7 +100,9 @@ def get_chan(page):
     page -- the TIFF page
     """
     chan = None
-    img_descr = page.tags.get("ImageDescription", None)  # OME-TIFF (XML) or MIBITIFF (JSON)
+    img_descr = page.tags.get(
+        "ImageDescription", None
+    )  # OME-TIFF (XML) or MIBITIFF (JSON)
     if img_descr:
         try:
             img_dict = xmltodict.parse(img_descr.value)
