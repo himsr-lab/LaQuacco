@@ -27,15 +27,15 @@ Description:
 # TODO
 """
 
-import datetime
+
 import fnmatch
 import os
 import platform
 import subprocess
 import tempfile
 import time
-import xml
 import xmltodict
+from datetime import datetime
 import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
 
 # limit pool size for multi-threading
@@ -55,10 +55,10 @@ import polars as pl
 
 def copy_file(src_path="", dst_path=""):
     """Use the operating systems' native commands to copy a (remote) source file
-        to a (temporary) destination file. If the destination directory does not exist,
-        this function will create a temporary destination directiory first.
-        Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
-        required for network connections, so we're using system-native commands instead.
+       to a (temporary) destination file. If the destination directory does not exist,
+       this function will create a temporary destination directiory first.
+       Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
+       required for network connections, so we're using system-native commands instead.
 
     Keyword arguments:
     src_file  -- (remote) source file path
@@ -101,7 +101,7 @@ def get_chans(tiff):
     """
     chans = []
     pages = tiff.series[0].pages  # pages of first series
-    # OME TIFF
+    # OME-TIFF
     ome_metadata = tiff.ome_metadata
     if ome_metadata:  # TIFF baseline tag 'ImageDescription'
         ome_dict = xmltodict.parse(ome_metadata)
@@ -134,7 +134,7 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     chan_data = []
     empty = tuple(None for n in range(0, length)) if length > 1 else None
     for _img, chans_data in imgs_chans_data.items():
-        if chan in chans_data and chan not in ["metadata"]:
+        if chan in chans_data:
             chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
             chan_data.append(empty)
@@ -142,6 +142,28 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     chan_data = np.array(chan_data, dtype="float")
     chan_data[chan_data is None] = np.nan
     return chan_data
+
+
+def get_expotimes(tiff):
+    """Get the exposure times from a TIFF object.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    """
+    expotimes = []
+    ome_metadata = tiff.ome_metadata
+    if ome_metadata:  # OME-TIFF
+        ome_dict = xmltodict.parse(ome_metadata)
+        plane = ome_dict["OME"]["Image"]["Pixels"].get("Plane", None)
+        if plane:
+            expotimes = [plan["@ExposureTime"] for plan in plane]
+        else:
+            sizec = int(ome_dict["OME"]["Image"]["Pixels"].get("@SizeC", None))
+            expotimes = [1.0 for channel in range(1, sizec)]
+    else:  # regular TIFF
+        pages = tiff.series[0].pages
+        expotimes = [1.0 for channel in range(1, len(pages) + 1)]
+    return expotimes
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -177,11 +199,10 @@ def get_img_data(imgs_chans_data, img, data):
     img_data = []
     if img in imgs_chans_data:
         for chan in imgs_chans_data[img].values():
-            if chan not in ["metadata"]:
-                if data in chan:
-                    img_data.append(chan[data])
-                else:  # data missing in channel
-                    img_data.append(None)
+            if data in chan:
+                img_data.append(chan[data])
+            else:  # data missing in channel
+                img_data.append(None)
     else:
         img_data = None
     # convert to Numpy array, keep Python datatype
@@ -273,12 +294,16 @@ def get_tiff(image):
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
     channels = get_chans(tiff)
+    date_time = get_datetime(tiff)
+    expo_times = get_expotimes(tiff)
     return {
         "tiff": tiff,  # file object
         "image": image,  # file path
         "shape": shape,  # dimensions
-        "pages": pages,  # header & pixels
+        "pages": pages,  # data pages
         "channels": channels,  # labels
+        "datetime": date_time,  # timestamp
+        "expotimes": expo_times,  # acquisition
     }
 
 
@@ -323,13 +348,33 @@ def get_time_left(start=None, current=None, total=None):
     return time_str.strip()
 
 
-def get_timestamp(timestamp):
-    """Get a timestamp from a corresponding TIFF tag string.
+def get_datetime(tiff):
+    """Get a datetime from the corresponding TIFF metadata.
 
     Keyword arguments:
-    timestamp  -- the timestamp string
+    tiff -- the TIFF object
     """
-    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
+    date_time = None
+    ome_metadata = tiff.ome_metadata
+    if ome_metadata:  # OME-TIFF
+        ome_dict = xmltodict.parse(ome_metadata)
+        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
+        try:  # 1989 C standard 
+            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
+        except ValueError:  # others
+            date_time = datetime.strptime(date_time[:26] + date_time[27:],
+                                           '%Y-%m-%dT%H:%M:%S.%f%z')
+    else:  # regular TIFF
+        pages = tiff.series[0].pages
+        try:  # baseline tags
+            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
+                                           "%Y:%m:%d %H:%M:%S")
+        except ValueError:
+            pass
+    if not date_time:
+        date_time = datetime.strptime("1900:00:00T00:00:00",
+                                       "%Y:%m:%d %H:%M:%S")
+    return date_time
 
 
 def stats_img_data(tiff, chans_stats=None):
@@ -343,10 +388,6 @@ def stats_img_data(tiff, chans_stats=None):
     pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
     for page, chan in zip(tiff["pages"], tiff["channels"]):
         page.asarray(out=pixls)  # in-place
-        # get date and time of acquisition
-        img_chans_data["metadata"] = {
-            "date_time": get_timestamp(page.tags["DateTime"].value)
-        }
         if not chans_stats or chan not in chans_stats:
             chans_stats = {chan: (None, 0.0, None)}
         # get statistics for channel
