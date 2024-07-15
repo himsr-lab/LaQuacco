@@ -93,27 +93,32 @@ def copy_file(src_path="", dst_path=""):
     return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
-def get_chan(page):
-    """Get the channel name from a TIFF page.
+def get_chans(tiff):
+    """Get the channel names from a TIFF object.
 
     Keyword arguments:
-    page -- the TIFF page
+    tiff -- the TIFF object
     """
-    chan = None
-    img_descr = page.tags.get(
-        "ImageDescription", None
-    )  # OME-TIFF (XML) or MIBITIFF (JSON)
-    if img_descr:
-        try:
-            img_dict = xmltodict.parse(img_descr.value)
-            vendor_id = next(iter(img_dict))  # only key
-            chan = img_dict[vendor_id]["Name"]
-            marker = img_dict[vendor_id].get("Biomarker", None)  # might be missing
-            if marker:
-                chan = f"{marker} ({chan})"
-        except xml.parsers.expat.ExpatError:  # invalid XML
-            chan = page.tags["PageName"].value  # regular TIFF
-    return chan
+    chans = []
+    pages = tiff.series[0].pages  # pages of first series
+    # OME TIFF
+    ome_metadata = tiff.ome_metadata
+    if ome_metadata:  # TIFF baseline tag 'ImageDescription'
+        ome_dict = xmltodict.parse(ome_metadata)
+        try:  # access first image entry
+            channel = ome_dict["OME"]["Image"][0]["Pixels"]["Channel"]
+        except KeyError:  # fallback option
+            channel = ome_dict["OME"]["Image"]["Pixels"]["Channel"]
+        finally:
+            chans = [chan["@Name"] for chan in channel]
+    # regular TIFF
+    elif pages[0].tags.get("PageName", None):  # TIFF extension tag 'PageName'
+        for page in pages:
+            chans.append(page.aspage().tags["PageName"].value)
+    # custom TIFF
+    else:
+        chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+    return chans
 
 
 def get_chan_data(imgs_chans_data, chan, data, length=1):
@@ -267,21 +272,13 @@ def get_tiff(image):
     series = tiff.series  # descreasing resolutions
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
-    channels = []
-    # access all pages of the first series
-    for p, page in enumerate(pages):
-        # identify channel by name
-        chan = get_chan(page)
-        # or: by page count
-        if not chan:
-            chan = str(p)
-        channels.append(chan)
+    channels = get_chans(tiff)
     return {
-        "tiff": tiff,
-        "image": image,
-        "shape": shape,
-        "pages": pages,
-        "channels": channels,
+        "tiff": tiff,  # file object
+        "image": image,  # file path
+        "shape": shape,  # dimensions
+        "pages": pages,  # header & pixels
+        "channels": channels,  # labels
     }
 
 
