@@ -119,27 +119,80 @@ def get_chans(tiff):
     return chans
 
 
-def get_chan_data(imgs_chans_data, chan, data, length=1):
-    """Returns channel data from image data dictionaries.
-    Works across all images to retrieve the channel data.
+def get_chan_stats(imgs_chans_stats, chan, stat, length=1):
+    """Returns channel statistics from image statistics dictionaries.
 
     Keyword arguments:
-    imgs_chans_data -- dictionaries with image data
+    imgs_chans_stats -- dictionaries with image data
     chan -- the key determining the channel value
     data -- the key determining the channel data
     length -- length of the data tuple
     """
-    chan_data = []
+    chan_stats = []
     empty = tuple(None for n in range(0, length)) if length > 1 else None
-    for _img, chans_data in imgs_chans_data.items():
-        if chan in chans_data:
-            chan_data.append(chans_data[chan][data])
+    for _img, chans_stats in imgs_chans_stats.items():
+        if chan in chans_stats:
+            chan_stats.append(chans_stats[chan][stat])
         else:  # channel missing in image
-            chan_data.append(empty)
+            chan_stats.append(empty)
     # convert to Numpy array, keep Python datatype
-    chan_data = np.array(chan_data, dtype="float")
-    chan_data[chan_data is None] = np.nan
-    return chan_data
+    chan_stats = np.array(chan_stats, dtype="float")
+    chan_stats[chan_stats is None] = np.nan
+    return chan_stats
+
+
+def get_chans_stats(tiff, ctrl_stats=None):
+    """Calculate basic statistics for the image channels.
+
+    Keyword arguments:
+    tiff -- TIFF file object
+    ctrl_stats  -- channels' control statistics (mean, min, max)
+    """
+    chans_stats = dict()
+    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
+    for page, chan in zip(tiff["pages"], tiff["channels"]):
+        page.asarray(out=pixls)  # in-place
+        if not chans_stats or chan not in chans_stats:
+            ctrl_stats = {chan: (None, 0.0, None)}
+        # get statistics for channel
+        chans_stats[chan] = {}
+        (
+            chans_stats[chan]["total"],
+            chans_stats[chan]["size"],
+            chans_stats[chan]["mean"],
+            chans_stats[chan]["minmax"],
+            chans_stats[chan]["bands"],
+        ) = get_stats(pixls, ctrl_stats[chan])
+    return chans_stats
+
+
+def get_datetime(tiff):
+    """Get a datetime from the corresponding TIFF metadata.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    """
+    date_time = None
+    ome_metadata = tiff.ome_metadata
+    if ome_metadata:  # OME-TIFF
+        ome_dict = xmltodict.parse(ome_metadata)
+        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
+        try:  # 1989 C standard 
+            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
+        except ValueError:  # others
+            date_time = datetime.strptime(date_time[:26] + date_time[27:],
+                                           '%Y-%m-%dT%H:%M:%S.%f%z')
+    else:  # regular TIFF
+        pages = tiff.series[0].pages
+        try:  # baseline tags
+            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
+                                           "%Y:%m:%d %H:%M:%S")
+        except ValueError:
+            pass
+    if not date_time:
+        date_time = datetime.strptime("1900:00:00T00:00:00",
+                                       "%Y:%m:%d %H:%M:%S")
+    return date_time
 
 
 def get_expotimes(tiff):
@@ -185,18 +238,18 @@ def get_files(path="", pat=None, anti=None, recurse=False):
     return FILES
 
 
-def get_img_data(imgs_chans_data, img, data):
+def get_img_data(imgs_chans_stats, img, data):
     """Returns image data from image data dictionaries.
     Works across all channels to retrieve the image data.
 
     Keyword arguments:
-    imgs_chans_data -- dictionaries with image data
+    imgs_chans_stats -- dictionaries with image data
     img -- the key determining the image value
     data -- the key determining the channel data
     """
     img_data = []
-    if img in imgs_chans_data:
-        for chan in imgs_chans_data[img].values():
+    if img in imgs_chans_stats:
+        for chan in imgs_chans_stats[img].values():
             if data in chan:
                 img_data.append(chan[data])
             else:  # data missing in channel
@@ -209,17 +262,17 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_stats(array, chan_stats=(None, None, None)):
+def get_stats(array, ctrl_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
 
     Keyword arguments:
     array -- Numpy array
-    chan_stats -- channel's statistics (mean, min, max)
+    ctrl_stats  -- channels' control statistics (mean, min, max)
     """
-    chan_mean = chan_stats[0]
-    chan_min = chan_stats[1]
-    chan_max = chan_stats[2]
+    chan_mean = ctrl_stats[0]
+    chan_min = ctrl_stats[1]
+    chan_max = ctrl_stats[2]
     get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     if get_bands:
@@ -345,57 +398,3 @@ def get_time_left(start=None, current=None, total=None):
         time_str += f"{round(seconds)}s"
     return time_str.strip()
 
-
-def get_datetime(tiff):
-    """Get a datetime from the corresponding TIFF metadata.
-
-    Keyword arguments:
-    tiff -- the TIFF object
-    """
-    date_time = None
-    ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # OME-TIFF
-        ome_dict = xmltodict.parse(ome_metadata)
-        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
-        try:  # 1989 C standard 
-            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
-        except ValueError:  # others
-            date_time = datetime.strptime(date_time[:26] + date_time[27:],
-                                           '%Y-%m-%dT%H:%M:%S.%f%z')
-    else:  # regular TIFF
-        pages = tiff.series[0].pages
-        try:  # baseline tags
-            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
-                                           "%Y:%m:%d %H:%M:%S")
-        except ValueError:
-            pass
-    if not date_time:
-        date_time = datetime.strptime("1900:00:00T00:00:00",
-                                       "%Y:%m:%d %H:%M:%S")
-    return date_time
-
-
-def stats_img_data(tiff, chans_stats=None):
-    """Calculate basic statistics for the image channels.
-
-    Keyword arguments:
-    tiff -- TIFF dictionary
-    chans_stats  -- channels' statistics (mean, min, and max)
-    """
-    img_chans_data = dict()
-    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
-    for page, chan in zip(tiff["pages"], tiff["channels"]):
-        page.asarray(out=pixls)  # in-place
-        if not chans_stats or chan not in chans_stats:
-            chans_stats = {chan: (None, 0.0, None)}
-        # get statistics for channel
-        img_chans_data[chan] = {}
-        (
-            img_chans_data[chan]["total"],
-            img_chans_data[chan]["size"],
-            img_chans_data[chan]["mean"],
-            img_chans_data[chan]["minmax"],
-            img_chans_data[chan]["bands"],
-        ) = get_stats(pixls, chans_stats[chan])
-    tiff["tiff"].close()
-    return img_chans_data
