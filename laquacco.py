@@ -100,24 +100,22 @@ def get_chans(tiff):
     tiff -- the TIFF object
     """
     chans = []
-    pages = tiff.series[0].pages  # pages of first series
-    # OME-TIFF
     ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # TIFF baseline tag 'ImageDescription'
+    if ome_metadata:  # OME-TIFF
         ome_dict = xmltodict.parse(ome_metadata)
-        try:  # access first image entry
+        try:  # image list
             channel = ome_dict["OME"]["Image"][0]["Pixels"]["Channel"]
-        except KeyError:  # fallback option
+        except KeyError:  # image dictionary
             channel = ome_dict["OME"]["Image"]["Pixels"]["Channel"]
         finally:
             chans = [chan["@Name"] for chan in channel]
-    # regular TIFF
-    elif pages[0].tags.get("PageName", None):  # TIFF extension tag 'PageName'
-        for page in pages:
-            chans.append(page.aspage().tags["PageName"].value)
-    # custom TIFF
-    else:
-        chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+    else:  # regular TIFF
+        pages = tiff.series[0].pages
+        try:  # baseline tags
+            for page in pages:
+                chans.append(page.aspage().tags["PageName"].value)
+        except KeyError:  # generic tags
+            chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
     return chans
 
 
