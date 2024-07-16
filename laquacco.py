@@ -18,7 +18,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v1.0 (2024-03-08)
+Summary:    Laboratory Quality Control v1.0 (2024-07-16)
 DOI:        # TODO
 URL:        https://github.com/christianrickert/LaQuacco
 
@@ -27,7 +27,6 @@ Description:
 # TODO
 """
 
-
 import fnmatch
 import os
 import platform
@@ -35,8 +34,8 @@ import subprocess
 import tempfile
 import time
 import xmltodict
-from datetime import datetime
 import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
+from datetime import datetime
 
 # limit pool size for multi-threading
 try:  # macOS, Linux
@@ -55,10 +54,10 @@ import polars as pl
 
 def copy_file(src_path="", dst_path=""):
     """Use the operating systems' native commands to copy a (remote) source file
-       to a (temporary) destination file. If the destination directory does not exist,
-       this function will create a temporary destination directiory first.
-       Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
-       required for network connections, so we're using system-native commands instead.
+        to a (temporary) destination file. If the destination directory does not exist,
+        this function will create a temporary destination directiory first.
+        Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
+        required for network connections, so we're using system-native commands instead.
 
     Keyword arguments:
     src_file  -- (remote) source file path
@@ -119,51 +118,27 @@ def get_chans(tiff):
     return chans
 
 
-def get_chan_stats(imgs_chans_stats, chan, stat, length=1):
-    """Returns channel statistics from image statistics dictionaries.
+def get_chan_data(imgs_chans_data, chan, data, length=1):
+    """Returns channel data from image data dictionaries.
+    Works across all images to retrieve the channel data.
 
     Keyword arguments:
-    imgs_chans_stats -- dictionaries with image data
+    imgs_chans_data -- dictionaries with image data
     chan -- the key determining the channel value
     data -- the key determining the channel data
     length -- length of the data tuple
     """
-    chan_stats = []
+    chan_data = []
     empty = tuple(None for n in range(0, length)) if length > 1 else None
-    for _img, chans_stats in imgs_chans_stats.items():
-        if chan in chans_stats:
-            chan_stats.append(chans_stats[chan][stat])
+    for _img, chans_data in imgs_chans_data.items():
+        if chan in chans_data and chan not in ["metadata"]:
+            chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
-            chan_stats.append(empty)
+            chan_data.append(empty)
     # convert to Numpy array, keep Python datatype
-    chan_stats = np.array(chan_stats, dtype="float")
-    chan_stats[chan_stats is None] = np.nan
-    return chan_stats
-
-
-def get_chans_stats(tiff, ctrl_stats=None):
-    """Calculate basic statistics for the image channels.
-
-    Keyword arguments:
-    tiff -- TIFF file object
-    ctrl_stats  -- channels' control statistics (mean, min, max)
-    """
-    chans_stats = dict()
-    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
-    for page, chan in zip(tiff["pages"], tiff["channels"]):
-        page.asarray(out=pixls)  # in-place
-        if not chans_stats or chan not in chans_stats:
-            ctrl_stats = {chan: (None, 0.0, None)}
-        # get statistics for channel
-        chans_stats[chan] = {}
-        (
-            chans_stats[chan]["total"],
-            chans_stats[chan]["size"],
-            chans_stats[chan]["mean"],
-            chans_stats[chan]["minmax"],
-            chans_stats[chan]["bands"],
-        ) = get_stats(pixls, ctrl_stats[chan])
-    return chans_stats
+    chan_data = np.array(chan_data, dtype="float")
+    chan_data[chan_data is None] = np.nan
+    return chan_data
 
 
 def get_datetime(tiff):
@@ -238,22 +213,23 @@ def get_files(path="", pat=None, anti=None, recurse=False):
     return FILES
 
 
-def get_img_data(imgs_chans_stats, img, data):
+def get_img_data(imgs_chans_data, img, data):
     """Returns image data from image data dictionaries.
     Works across all channels to retrieve the image data.
 
     Keyword arguments:
-    imgs_chans_stats -- dictionaries with image data
+    imgs_chans_data -- dictionaries with image data
     img -- the key determining the image value
     data -- the key determining the channel data
     """
     img_data = []
-    if img in imgs_chans_stats:
-        for chan in imgs_chans_stats[img].values():
-            if data in chan:
-                img_data.append(chan[data])
-            else:  # data missing in channel
-                img_data.append(None)
+    if img in imgs_chans_data:
+        for chan in imgs_chans_data[img].values():
+            if chan not in ["metadata"]:
+                if data in chan:
+                    img_data.append(chan[data])
+                else:  # data missing in channel
+                    img_data.append(None)
     else:
         img_data = None
     # convert to Numpy array, keep Python datatype
@@ -262,17 +238,17 @@ def get_img_data(imgs_chans_stats, img, data):
     return img_data
 
 
-def get_stats(array, ctrl_stats=(None, None, None)):
+def get_stats(array, chan_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
 
     Keyword arguments:
     array -- Numpy array
-    ctrl_stats  -- channels' control statistics (mean, min, max)
+    chan_stats -- channel's statistics (mean, min, max)
     """
-    chan_mean = ctrl_stats[0]
-    chan_min = ctrl_stats[1]
-    chan_max = ctrl_stats[2]
+    chan_mean = chan_stats[0]
+    chan_min = chan_stats[1]
+    chan_max = chan_stats[2]
     get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
     if get_bands:
@@ -397,4 +373,43 @@ def get_time_left(start=None, current=None, total=None):
     if seconds >= 0.0:
         time_str += f"{round(seconds)}s"
     return time_str.strip()
+
+
+def get_timestamp(timestamp):
+    """Get a timestamp from a corresponding TIFF tag string.
+
+    Keyword arguments:
+    timestamp  -- the timestamp string
+    """
+    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
+
+
+def stats_img_data(tiff, chans_stats=None):
+    """Calculate basic statistics for the image channels.
+
+    Keyword arguments:
+    tiff -- TIFF dictionary
+    chans_stats  -- channels' statistics (mean, min, and max)
+    """
+    img_chans_data = dict()
+    pixls = np.empty((tiff["shape"][1:]))  # pre-allocate
+    for page, chan in zip(tiff["pages"], tiff["channels"]):
+        page.asarray(out=pixls)  # in-place
+        # get date and time of acquisition
+        img_chans_data["metadata"] = {
+            "date_time": get_timestamp(page.tags["DateTime"].value)
+        }
+        if not chans_stats or chan not in chans_stats:
+            chans_stats = {chan: (None, 0.0, None)}
+        # get statistics for channel
+        img_chans_data[chan] = {}
+        (
+            img_chans_data[chan]["total"],
+            img_chans_data[chan]["size"],
+            img_chans_data[chan]["mean"],
+            img_chans_data[chan]["minmax"],
+            img_chans_data[chan]["bands"],
+        ) = get_stats(pixls, chans_stats[chan])
+    tiff["tiff"].close()
+    return img_chans_data
 
