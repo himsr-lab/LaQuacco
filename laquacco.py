@@ -152,21 +152,22 @@ def get_datetime(tiff):
     if ome_metadata:  # OME-TIFF
         ome_dict = xmltodict.parse(ome_metadata)
         date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
-        try:  # 1989 C standard 
+        try:  # 1989 C standard
             date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
         except ValueError:  # others
-            date_time = datetime.strptime(date_time[:26] + date_time[27:],
-                                           '%Y-%m-%dT%H:%M:%S.%f%z')
+            date_time = datetime.strptime(
+                date_time[:26] + date_time[27:], "%Y-%m-%dT%H:%M:%S.%f%z"
+            )
     else:  # regular TIFF
         pages = tiff.series[0].pages
         try:  # baseline tags
-            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
-                                           "%Y:%m:%d %H:%M:%S")
+            date_time = datetime.strptime(
+                pages[0].tags.get("DateTime", None).value, "%Y:%m:%d %H:%M:%S"
+            )
         except ValueError:
             pass
     if not date_time:
-        date_time = datetime.strptime("1900:00:00T00:00:00",
-                                       "%Y:%m:%d %H:%M:%S")
+        date_time = datetime.strptime("1900:00:00T00:00:00", "%Y:%m:%d %H:%M:%S")
     return date_time
 
 
@@ -412,4 +413,3 @@ def stats_img_data(tiff, chans_stats=None):
         ) = get_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
-
