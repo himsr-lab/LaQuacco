@@ -1,8 +1,8 @@
 import tifffile
 import xmltodict
-import json
 import os
 import fnmatch
+from datetime import datetime
 
 
 def get_tiff(image):
@@ -19,16 +19,82 @@ def get_tiff(image):
     series = tiff.series  # descreasing resolutions
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
-    channels = []
-    # access all pages of the first series
     channels = get_chans(tiff)
+    # date_time = get_datetime(tiff)
+    # expo_times = get_expotimes(tiff)
     return {
-        "tiff": tiff,
-        "image": image,
-        "shape": shape,
-        "pages": pages,
-        "channels": channels,
+        "channels": channels,  # labels
+        # "datetime": date_time,  # timestamp
+        # "expotimes": expo_times,  # acquisition
+        "image": image,  # file path
+        "pages": pages,  # data pages
+        "shape": shape,  # dimensions
+        "tiff": tiff,  # tiff object
     }
+
+
+# def get_datetime(tiff):
+#    """Get a datetime from the corresponding TIFF metadata.
+#
+#    Keyword arguments:
+#    tiff -- the TIFF object
+#    """
+#    date_time = None
+#    ome_metadata = tiff.ome_metadata
+#    if ome_metadata:  # OME-TIFF
+#        ome_dict = xmltodict.parse(ome_metadata)
+#        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
+#        try:  # 1989 C standard
+#            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
+#        except ValueError:  # others
+#            date_time = datetime.strptime(date_time[:26] + date_time[27:],
+#                                           '%Y-%m-%dT%H:%M:%S.%f%z')
+#    else:  # regular TIFF
+#        pages = tiff.series[0].pages
+#        try:  # baseline tags
+#            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
+#                                           "%Y:%m:%d %H:%M:%S")
+#        except ValueError:
+#            pass
+#    if not date_time:
+#        date_time = datetime.strptime("1900:00:00T00:00:00",
+#                                       "%Y:%m:%d %H:%M:%S")
+#    return date_time
+#
+# def get_expotimes(tiff):
+#    """Get the exposure times from a TIFF object.
+#
+#    Keyword arguments:
+#    tiff -- the TIFF object
+#    """
+#    expotimes = []
+#    ome_metadata = tiff.ome_metadata
+#    if ome_metadata:  # OME-TIFF
+#        ome_dict = xmltodict.parse(ome_metadata)
+#        plane = ome_dict["OME"]["Image"]["Pixels"].get("Plane", None)
+#        if plane:
+#            expotimes = [plan["@ExposureTime"] for plan in plane]
+#        else:
+#            sizec = int(ome_dict["OME"]["Image"]["Pixels"].get("@SizeC", None))
+#            expotimes = [1.0 for channel in range(1, sizec)]
+#    else:  # regular TIFF
+#        pages = tiff.series[0].pages
+#        expotimes = [1.0 for channel in range(1, len(pages) + 1)]
+#    return expotimes
+#
+
+
+def get_ome_metadata(tiff, page=0):
+    """Get OME metadata from `ImageDescription` TIFF tag.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    """
+    ome_metadata = None
+    img_dscr = tiff.pages[page].tags.get("ImageDescription", None)
+    if img_dscr and img_dscr.value.startswith("<?xml"):
+        ome_metadata = xmltodict.parse(img_dscr.value)
+    return ome_metadata
 
 
 def get_chans(tiff):
@@ -38,24 +104,26 @@ def get_chans(tiff):
     tiff -- the TIFF object
     """
     chans = []
-    pages = tiff.series[0].pages  # pages of first series
-    # OME TIFF
-    ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # TIFF baseline tag 'ImageDescription'
-        ome_dict = xmltodict.parse(ome_metadata)
-        try:  # access first image entry
-            channel = ome_dict["OME"]["Image"][0]["Pixels"]["Channel"]
-        except KeyError:  # fallback to only image entry
-            channel = ome_dict["OME"]["Image"]["Pixels"]["Channel"]
-        finally:
-            chans = [chan["@Name"] for chan in channel]
-    # regular TIFF
-    elif pages[0].tags.get("PageName", None):  # TIFF extension tag 'PageName'
-        for page in pages:
-            chans.append(page.aspage().tags["PageName"].value)
-    # custom TIFF
-    else:
-        chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+    pages = tiff.series[0].pages
+    ome_metadata = get_ome_metadata(tiff)
+    if ome_metadata:
+        try:  # OME-TIFF
+            chans = [
+                chan.get("@Name")
+                for chan in ome_metadata["OME"]["Image"]["Pixels"]["Channel"]
+            ]
+        except:  # OME-variants
+            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
+            qptiff_metadata = ome_metadata.get(qptiff_ident, None)
+            if qptiff_metadata:  # PerkinElmer QPTIFF
+                for index, page in enumerate(pages):
+                    chans.append(get_ome_metadata(tiff, index)[qptiff_ident]["Name"])
+    else:  # regular TIFF
+        try:
+            for page in pages:
+                chans.append(page.aspage().tags["PageName"].value)
+        except KeyError:  # generic tags
+            chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
     return chans
 
 
@@ -81,11 +149,13 @@ def get_files(path="", pat=None, anti=None, recurse=True):
 
 
 FILES = []
-FILES.append(get_files(path="./tests", pat="*tif", anti=""))
-FILES.append(get_files(path="./tests", pat="*tiff", anti=""))
+for extension in ["*.tif", "*.tiff"]:
+    FILES.append(get_files(path="./tests", pat=extension, anti=""))
 FILES = [file for sublist in FILES for file in sublist]
 
 for index, FILE in enumerate(FILES):
-    print("\n" + str(index) + " " + os.path.basename(FILE))
     tiff = get_tiff(FILE)
+    path, file = os.path.split(FILE)
+    print(f"{index}: {os.path.split(path)[-1]}/{file}:")
+    print(f"{[chan for chan in tiff['channels']]}")
     tiff["tiff"].close()
