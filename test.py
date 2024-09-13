@@ -18,15 +18,14 @@ def get_tiff(image):
     tiff = tifffile.TiffFile(image)
     ome_meta = get_ome_meta(tiff)
     channels = get_chans(tiff, ome_meta)
-    # date_time = get_datetime(tiff)
+    date_time = get_date_time(tiff, ome_meta)
     # expo_times = get_expotimes(tiff)
-    series = tiff.series  # descreasing resolutions
+    series = tiff.series  # image file directories (IFD)
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
-
     return {
         "channels": channels,  # labels
-        # "date_time": date_time,  # timestamp
+        "date_time": date_time,  # timestamp
         # "expo_times": expo_times,  # acquisition
         "image": image,  # file path
         "ome_meta": ome_meta,  # OME TIFF metadata
@@ -36,34 +35,62 @@ def get_tiff(image):
     }
 
 
-# def get_datetime(tiff):
-#    """Get a datetime from the corresponding TIFF metadata.
-#
-#    Keyword arguments:
-#    tiff -- the TIFF object
-#    """
-#    date_time = None
-#    ome_metadata = tiff.ome_metadata
-#    if ome_metadata:  # OME-TIFF
-#        ome_dict = xmltodict.parse(ome_metadata)
-#        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
-#        try:  # 1989 C standard
-#            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
-#        except ValueError:  # others
-#            date_time = datetime.strptime(date_time[:26] + date_time[27:],
-#                                           '%Y-%m-%dT%H:%M:%S.%f%z')
-#    else:  # regular TIFF
-#        pages = tiff.series[0].pages
-#        try:  # baseline tags
-#            date_time = datetime.strptime(pages[0].tags.get("DateTime", None).value,
-#                                           "%Y:%m:%d %H:%M:%S")
-#        except ValueError:
-#            pass
-#    if not date_time:
-#        date_time = datetime.strptime("1900:00:00T00:00:00",
-#                                       "%Y:%m:%d %H:%M:%S")
-#    return date_time
-#
+def get_date_time(tiff, ome_meta):
+    """Get a datetime from the corresponding TIFF metadata.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    ome_meta -- OME TIFF metadata
+    """
+    date_time = None
+    if ome_meta:
+        try:  # OME-TIFF
+            date_time = ome_meta["OME"]["Image"].get("AcquisitionDate", None)
+        except KeyError:  # OME-variants
+            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
+            qptiff_metadata = ome_meta.get(qptiff_ident, None)
+            if qptiff_metadata:  # PerkinElmer QPTIFF
+                date_time = ome_meta[qptiff_ident]["Responsivity"]["Band"][0]["Date"]
+    if not date_time:  # regular TIFF or OME-TIFF without timestamp
+        page = tiff.series[0].pages[0].aspage()
+        try:
+            date_time = page.tags["DateTime"].value
+        except KeyError:
+            date_time = str(datetime.now())
+
+    # if not chans:  # regular TIFF or OME-TIFF without timestamp
+    #    try:
+    #        pass
+    # date_time = tiff["pages"].
+    #    try:
+    #        for page in pages:
+    #            chans.append(page.aspage().tags["PageName"].value)
+    #    except KeyError:  # generic tags
+    #        chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+
+    # ome_metadata = tiff.ome_metadata
+    # if ome_metadata:  # OME-TIFF
+    #    ome_dict = xmltodict.parse(ome_metadata)
+    #    date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
+    #    try:  # 1989 C standard
+    #        date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
+    #    except ValueError:  # others
+    #        date_time = datetime.strptime(
+    #            date_time[:26] + date_time[27:], "%Y-%m-%dT%H:%M:%S.%f%z"
+    #        )
+    # else:  # regular TIFF
+    #    pages = tiff.series[0].pages
+    #    try:  # baseline tags
+    #        date_time = datetime.strptime(
+    #            pages[0].tags.get("DateTime", None).value, "%Y:%m:%d %H:%M:%S"
+    #        )
+    #    except ValueError:
+    #        pass
+    # if not date_time:
+    #    date_time = datetime.strptime("1900:00:00T00:00:00", "%Y:%m:%d %H:%M:%S")
+    return date_time
+
+
 # def get_expotimes(tiff):
 #    """Get the exposure times from a TIFF object.
 #
@@ -162,4 +189,6 @@ for index, FILE in enumerate(FILES):
     path, file = os.path.split(FILE)
     print(f"{index}: {os.path.split(path)[-1]}/{file}:")
     print(f"{[chan for chan in tiff['channels']]}")
+    print(f"{tiff['date_time']}")
+    print()
     tiff["tiff"].close()
