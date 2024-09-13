@@ -20,14 +20,14 @@ def get_tiff(image):
     ome_meta = get_ome_meta(tiff)
     channels = get_chans(tiff, ome_meta)
     date_time = get_date_time(tiff, ome_meta)
-    # expo_times = get_expotimes(tiff)
+    expo_times = None  # get_expo_times(tiff, ome_meta)
     series = tiff.series  # image file directories (IFD)
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
     return {
         "channels": channels,  # labels
         "date_time": date_time,  # timestamp
-        # "expo_times": expo_times,  # acquisition
+        "expo_times": expo_times,  # acquisition
         "image": image,  # file path
         "ome_meta": ome_meta,  # OME TIFF metadata
         "pages": pages,  # data pages
@@ -51,23 +51,63 @@ def get_date_time(tiff, ome_meta):
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
             qptiff_metadata = ome_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
-                date_time = ome_meta[qptiff_ident]["Responsivity"]["Band"][0]["Date"]
+                try:  # fluorescence
+                    filter = ome_meta[qptiff_ident]["Responsivity"].get("Filter")
+                    if filter:  # Akoya Vectra 3
+                        if isinstance(filter, list):
+                            filter = filter[0]
+                        date_time = filter.get("Date")
+                    band = ome_meta[qptiff_ident]["Responsivity"].get("Band")
+                    if band:  # Akoya Vectra Polaris/PhenoImager HT (FOVs)
+                        if isinstance(band, list):
+                            band = band[0]
+                        date_time = band.get("Date")
+                except KeyError:  # brightfield
+                    pass  # missing
     if not date_time:  # regular TIFF or OME-TIFF without timestamp
-        page = tiff.series[0].pages[0].aspage()
-        try:
-            date_time = page.tags["DateTime"].value
-        except KeyError:
-            date_time = str(datetime.now())
-    return dateutil.parser.parse(date_time)  # voodoo
+        date_time = tiff.series[0].pages[0].aspage().tags.get("DateTime")
+        if date_time:  # with baseline tag
+            date_time = datetime.strptime(str(date_time.value), "%Y:%m:%d %H:%M:%S")
+        else:  # without baseline tag
+            date_time = datetime.now()
+    if not isinstance(date_time, datetime):
+        date_time = dateutil.parser.parse(date_time)  # voodoo
+    return date_time
 
 
-# def get_expotimes(tiff):
-#    """Get the exposure times from a TIFF object.
-#
-#    Keyword arguments:
-#    tiff -- the TIFF object
-#    """
-#    expotimes = []
+def get_expo_times(tiff, ome_meta):
+    """Get the exposure times from a TIFF object.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    ome_meta -- OME TIFF metadata
+    """
+    expo_times = []
+    pages = tiff.series[0].pages
+    if ome_meta:
+        try:  # OME-TIFF
+            expo_times = [
+                (chan.get("@ExposureTime", None), chan.get("@ExposureTimeUnit", "s"))
+                for chan in ome_meta["OME"]["Image"]["Pixels"]["Plane"]
+            ]
+        except KeyError:  # OME-variants
+            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
+            qptiff_metadata = ome_meta.get(qptiff_ident, None)
+            if qptiff_metadata:  # PerkinElmer QPTIFF
+                for index, page in enumerate(pages):
+                    expo_times.append(
+                        get_ome_meta(tiff, index)[qptiff_ident]["ExposureTime"]
+                    )
+    if not expo_times:  # regular TIFF or OME-TIFF without names
+        pass
+        # try:
+        #    for page in pages:
+        #        chans.append(page.aspage().tags["PageName"].value)
+        # except KeyError:  # generic tags
+        #    chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+    return expo_times
+
+
 #    ome_metadata = tiff.ome_metadata
 #    if ome_metadata:  # OME-TIFF
 #        ome_dict = xmltodict.parse(ome_metadata)
@@ -90,6 +130,7 @@ def get_ome_meta(tiff, page=0):
 
     Keyword arguments:
     tiff -- the TIFF object
+    page -- the series (IFDs) index
     """
     ome_metadata = None
     img_dscr = tiff.pages[page].tags.get("ImageDescription", None)
@@ -118,7 +159,10 @@ def get_chans(tiff, ome_meta):
             qptiff_metadata = ome_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 for index, page in enumerate(pages):
-                    chans.append(get_ome_meta(tiff, index)[qptiff_ident]["Name"])
+                    try:  # fluorescence
+                        chans.append(get_ome_meta(tiff, index)[qptiff_ident]["Name"])
+                    except KeyError:  # brightfield
+                        pass  # RGB
     if not chans:  # regular TIFF or OME-TIFF without names
         try:
             for page in pages:
@@ -150,15 +194,16 @@ def get_files(path="", pat=None, anti=None, recurse=True):
 
 
 FILES = []
-for extension in ["*.tif", "*.tiff"]:
+for extension in ["*.tif", "*.tiff", "*.qptiff"]:
     FILES.append(get_files(path="./tests", pat=extension, anti=""))
 FILES = [file for sublist in FILES for file in sublist]
 
 for index, FILE in enumerate(FILES):
-    tiff = get_tiff(FILE)
     path, file = os.path.split(FILE)
-    print(f"{index}: {os.path.split(path)[-1]}/{file}:")
-    # print(f"{[chan for chan in tiff['channels']]}")
+    print(f"{index}: {os.path.split(path)[-1]}/{file}:", flush=True)
+    tiff = get_tiff(FILE)
+    print(f"{[chan for chan in tiff['channels']]}")
     print(f"{tiff['date_time']}")
+    # print(f"{[expo for expo in tiff['expo_times']]}")
     print()
     tiff["tiff"].close()
