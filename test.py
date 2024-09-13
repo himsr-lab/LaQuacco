@@ -16,17 +16,20 @@ def get_tiff(image):
     """
     # open TIFF file and keep handle open for later use
     tiff = tifffile.TiffFile(image)
+    ome_meta = get_ome_meta(tiff)
+    channels = get_chans(tiff, ome_meta)
+    # date_time = get_datetime(tiff)
+    # expo_times = get_expotimes(tiff)
     series = tiff.series  # descreasing resolutions
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
-    channels = get_chans(tiff)
-    # date_time = get_datetime(tiff)
-    # expo_times = get_expotimes(tiff)
+
     return {
         "channels": channels,  # labels
-        # "datetime": date_time,  # timestamp
-        # "expotimes": expo_times,  # acquisition
+        # "date_time": date_time,  # timestamp
+        # "expo_times": expo_times,  # acquisition
         "image": image,  # file path
+        "ome_meta": ome_meta,  # OME TIFF metadata
         "pages": pages,  # data pages
         "shape": shape,  # dimensions
         "tiff": tiff,  # tiff object
@@ -84,8 +87,9 @@ def get_tiff(image):
 #
 
 
-def get_ome_metadata(tiff, page=0):
-    """Get OME metadata from `ImageDescription` TIFF tag.
+def get_ome_meta(tiff, page=0):
+    """Get OME metadata from `ImageDescription` TIFF tag and
+    return a Python dictionary.
 
     Keyword arguments:
     tiff -- the TIFF object
@@ -97,28 +101,28 @@ def get_ome_metadata(tiff, page=0):
     return ome_metadata
 
 
-def get_chans(tiff):
+def get_chans(tiff, ome_meta):
     """Get the channel names from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
+    ome_meta -- OME TIFF metadata
     """
     chans = []
     pages = tiff.series[0].pages
-    ome_metadata = get_ome_metadata(tiff)
-    if ome_metadata:
+    if ome_meta:
         try:  # OME-TIFF
             chans = [
                 chan.get("@Name")
-                for chan in ome_metadata["OME"]["Image"]["Pixels"]["Channel"]
+                for chan in ome_meta["OME"]["Image"]["Pixels"]["Channel"]
             ]
-        except:  # OME-variants
+        except KeyError:  # OME-variants
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
-            qptiff_metadata = ome_metadata.get(qptiff_ident, None)
+            qptiff_metadata = ome_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 for index, page in enumerate(pages):
-                    chans.append(get_ome_metadata(tiff, index)[qptiff_ident]["Name"])
-    else:  # regular TIFF
+                    chans.append(get_ome_meta(tiff, index)[qptiff_ident]["Name"])
+    if not chans:  # regular TIFF or OME-TIFF without names
         try:
             for page in pages:
                 chans.append(page.aspage().tags["PageName"].value)
