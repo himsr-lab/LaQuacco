@@ -1,4 +1,5 @@
 import fnmatch
+import math
 import os
 import tifffile
 import xmltodict
@@ -20,7 +21,7 @@ def get_tiff(image):
     ome_meta = get_ome_meta(tiff)
     channels = get_chans(tiff, ome_meta)
     date_time = get_date_time(tiff, ome_meta)
-    expo_times = None  # get_expo_times(tiff, ome_meta)
+    expo_times = get_expo_times(tiff, ome_meta, channels)
     series = tiff.series  # image file directories (IFD)
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
@@ -64,7 +65,7 @@ def get_date_time(tiff, ome_meta):
                         date_time = band.get("Date")
                 except KeyError:  # brightfield
                     pass  # missing
-    if not date_time:  # regular TIFF or OME-TIFF without timestamp
+    if not date_time:  # regular TIFF or OME-TIFF without `Date` field
         date_time = tiff.series[0].pages[0].aspage().tags.get("DateTime")
         if date_time:  # with baseline tag
             date_time = datetime.strptime(str(date_time.value), "%Y:%m:%d %H:%M:%S")
@@ -75,12 +76,46 @@ def get_date_time(tiff, ome_meta):
     return date_time
 
 
-def get_expo_times(tiff, ome_meta):
+def expo_to_si(time=1, unit="s"):
+    """Convert exposure times with custom exposure unit to SI values.
+
+    Keyword arguments:
+    expo -- tuple with exposure time and exposure unit
+    """
+    ome_units = {
+        "Ys": math.pow(10.0, 24),  # yotta
+        "Zs": math.pow(10.0, 21),  # zetta
+        "Es": math.pow(10.0, 18),  # exa
+        "Ps": math.pow(10.0, 15),  # peta
+        "Ts": math.pow(10.0, 12),  # tera
+        "Gs": math.pow(10.0, 9),  # giga
+        "Ms": math.pow(10.0, 6),  # mega
+        "ks": math.pow(10.0, 3),  # kilo
+        "hs": math.pow(10.0, 2),  # hecto
+        "das": math.pow(10.0, 1),  # deca
+        "ds": math.pow(10.0, -1),  # deci
+        "cs": math.pow(10.0, -2),  # centi
+        "ms": math.pow(10.0, -3),  # milli
+        "µs": math.pow(10.0, -6),  # micro
+        "ns": math.pow(10.0, -9),  # nano
+        "ps": math.pow(10.0, -12),  # pico
+        "fs": math.pow(10.0, -15),  # femto
+        "as": math.pow(10.0, -18),  # atto
+        "zs": math.pow(10.0, -21),  # zepto
+        "ys": math.pow(10.0, -24),  # yocto
+    }
+    if unit in ome_units:
+        time = time * ome_units[unit]
+    return (time, "s")
+
+
+def get_expo_times(tiff, ome_meta, channels):
     """Get the exposure times from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
     ome_meta -- OME TIFF metadata
+    channels  -- list of channels
     """
     expo_times = []
     pages = tiff.series[0].pages
@@ -96,32 +131,12 @@ def get_expo_times(tiff, ome_meta):
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 for index, page in enumerate(pages):
                     expo_times.append(
-                        get_ome_meta(tiff, index)[qptiff_ident]["ExposureTime"]
-                    )
+                        (get_ome_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
+                    )  # unit is undefined
     if not expo_times:  # regular TIFF or OME-TIFF without names
-        pass
-        # try:
-        #    for page in pages:
-        #        chans.append(page.aspage().tags["PageName"].value)
-        # except KeyError:  # generic tags
-        #    chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+        expo_times = [(1.0, "s") for chan in channels]
+    expo_times = [expo_to_si(float(time), str(unit)) for time, unit in expo_times]
     return expo_times
-
-
-#    ome_metadata = tiff.ome_metadata
-#    if ome_metadata:  # OME-TIFF
-#        ome_dict = xmltodict.parse(ome_metadata)
-#        plane = ome_dict["OME"]["Image"]["Pixels"].get("Plane", None)
-#        if plane:
-#            expotimes = [plan["@ExposureTime"] for plan in plane]
-#        else:
-#            sizec = int(ome_dict["OME"]["Image"]["Pixels"].get("@SizeC", None))
-#            expotimes = [1.0 for channel in range(1, sizec)]
-#    else:  # regular TIFF
-#        pages = tiff.series[0].pages
-#        expotimes = [1.0 for channel in range(1, len(pages) + 1)]
-#    return expotimes
-#
 
 
 def get_ome_meta(tiff, page=0):
@@ -204,6 +219,6 @@ for index, FILE in enumerate(FILES):
     tiff = get_tiff(FILE)
     print(f"{[chan for chan in tiff['channels']]}")
     print(f"{tiff['date_time']}")
-    # print(f"{[expo for expo in tiff['expo_times']]}")
+    print(f"{[expo for expo in tiff['expo_times']]}")
     print()
     tiff["tiff"].close()
