@@ -129,7 +129,7 @@ def get_expo_times(tiff, ome_meta, channels):
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
             qptiff_metadata = ome_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
-                for index, page in enumerate(pages):
+                for index in range(len(pages)):
                     expo_times.append(
                         (get_ome_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
                     )  # unit is undefined
@@ -148,7 +148,7 @@ def get_ome_meta(tiff, page=0):
     page -- the series (IFDs) index
     """
     ome_metadata = None
-    img_dscr = tiff.pages[page].tags.get("ImageDescription", None)
+    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
     if img_dscr and img_dscr.value.startswith("<?xml"):
         ome_metadata = xmltodict.parse(img_dscr.value)
     return ome_metadata
@@ -163,6 +163,7 @@ def get_chans(tiff, ome_meta):
     """
     chans = []
     pages = tiff.series[0].pages
+    pages_len = len(pages)
     if ome_meta:
         try:  # OME-TIFF
             chans = [
@@ -173,7 +174,7 @@ def get_chans(tiff, ome_meta):
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
             qptiff_metadata = ome_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
-                for index, page in enumerate(pages):
+                for index in range(pages_len):
                     try:  # fluorescence
                         chans.append(get_ome_meta(tiff, index)[qptiff_ident]["Name"])
                     except KeyError:  # brightfield
@@ -183,7 +184,7 @@ def get_chans(tiff, ome_meta):
             for page in pages:
                 chans.append(page.aspage().tags["PageName"].value)
         except KeyError:  # generic tags
-            chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+            chans = [f"Channel {channel}" for channel in range(1, pages_len + 1)]
     return chans
 
 
