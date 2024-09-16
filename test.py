@@ -44,24 +44,24 @@ def get_tiff(image):
     tiff = tifffile.TiffFile(image)
     xml_meta = get_xml_meta(tiff)
     channels = get_chans(tiff, xml_meta)
-    acquisitions = get_acqs(tiff, xml_meta)
+    datetimes = get_dates(tiff, xml_meta)
     exposures = get_expos(tiff, xml_meta, channels)
     # correct for missing IFDs (Standard BioTools)
-    if len(acquisitions) < len(channels):
-        acquisitions = [acquisitions[0] for _ in channels]
+    if len(datetimes) < len(channels):
+        datetimes = [datetimes[0] for _ in channels]
     if len(exposures) < len(channels):
         exposures = [exposures[0] for _ in channels]
     # return metadata and tiff object
     return {
-        "acquisitions": acquisitions,  # timestamps
-        "channels": channels,  # labels
+        "channels": channels,  # channel labels
         "exposures": exposures,  # exposure times
+        "datetimes": datetimes,  # acquisition timestamps
         "image": image,  # file path
         "tiff": tiff,  # tiff object
     }
 
 
-def get_acqs(tiff, xml_meta):
+def get_dates(tiff, xml_meta):
     """Get the acquisition timestamps from a TIFF object.
 
     Keyword arguments:
