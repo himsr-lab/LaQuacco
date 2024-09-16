@@ -27,7 +27,7 @@ xml_pattern = re.compile(
     )
     """,
     re.DOTALL | re.VERBOSE,
-)  # hic sunt dracones
+)  # hic sunt dracones 🐉🐉
 
 
 def get_tiff(image):
@@ -95,7 +95,7 @@ def get_date_time(tiff, xml_meta):
         else:  # without baseline tag
             date_time = datetime.now()
     if not isinstance(date_time, datetime):
-        date_time = dateutil.parser.parse(date_time)  # voodoo
+        date_time = dateutil.parser.parse(date_time)  # voodoo 🐔
     return date_time
 
 
