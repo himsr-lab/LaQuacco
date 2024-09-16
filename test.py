@@ -1,10 +1,16 @@
 import fnmatch
 import math
+import re
 import os
 import tifffile
 import xmltodict
 import dateutil
 from datetime import datetime
+
+
+xml_declaration_pattern = re.compile(
+    r'<\?xml\s+version="[\d\.]+"\s*(encoding="[\w-]+")?\s*\?>'
+)  # compile once at module load time
 
 
 def get_tiff(image):
@@ -140,8 +146,9 @@ def get_expo_times(tiff, ome_meta, channels):
 
 
 def get_ome_meta(tiff, page=0):
-    """Get OME metadata from `ImageDescription` TIFF tag and
-    return a Python dictionary.
+    """Get OME metadata from `ImageDescription` TIFF tag and return a Python dictionary.
+    We're not relying on `tifffile` and its `ome_metadata` attribute, because it is too
+    restrictive for OME-TIFF variants such as PerkinElmer's QPTIFF image files.
 
     Keyword arguments:
     tiff -- the TIFF object
@@ -149,8 +156,10 @@ def get_ome_meta(tiff, page=0):
     """
     ome_metadata = None
     img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
-    if img_dscr and img_dscr.value.startswith("<?xml"):
-        ome_metadata = xmltodict.parse(img_dscr.value)
+    if img_dscr:  # existing TIFF comment
+        xml_start = xml_declaration_pattern.search(img_dscr.value)
+        if xml_start:  # existing XML declaration (OME-TIFF and variants)
+            ome_metadata = xmltodict.parse(img_dscr.value[xml_start.start() :])
     return ome_metadata
 
 
