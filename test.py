@@ -4,8 +4,9 @@ import re
 import os
 import tifffile
 import xmltodict
-import dateutil
+
 from datetime import datetime
+from dateutil import parser
 
 
 # compile once at module load time
@@ -27,7 +28,7 @@ xml_pattern = re.compile(
     )
     """,
     re.DOTALL | re.VERBOSE,
-)  # hic sunt dracones 🐉🐉
+)  # hic sunt dracones 🐉
 
 
 def get_tiff(image):
@@ -43,60 +44,50 @@ def get_tiff(image):
     tiff = tifffile.TiffFile(image)
     xml_meta = get_xml_meta(tiff)
     channels = get_chans(tiff, xml_meta)
-    date_time = get_date_time(tiff, xml_meta)
-    expo_times = get_expo_times(tiff, xml_meta, channels)
-    series = tiff.series  # image file directories (IFD)
-    shape = series[0].shape
-    pages = tiff.pages[0 : shape[0]]
+    acquisitions = get_acqs(tiff, xml_meta)
+    exposures = get_expos(tiff, xml_meta, channels)
+    # correct for missing IFDs (Standard BioTools)
+    if len(acquisitions) < len(channels):
+        acquisitions = [acquisitions[0] for _ in channels]
+    if len(exposures) < len(channels):
+        exposures = [exposures[0] for _ in channels]
+    # return metadata and tiff object
     return {
+        "acquisitions": acquisitions,  # timestamps
         "channels": channels,  # labels
-        "date_time": date_time,  # timestamp
-        "expo_times": expo_times,  # acquisition
+        "exposures": exposures,  # exposure times
         "image": image,  # file path
-        "xml_meta": xml_meta,  # XML TIFF metadata
-        "pages": pages,  # data pages
-        "shape": shape,  # dimensions
         "tiff": tiff,  # tiff object
     }
 
 
-def get_date_time(tiff, xml_meta):
-    """Get a datetime from the corresponding TIFF metadata.
+def get_acqs(tiff, xml_meta):
+    """Get the acquisition timestamps from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
     xml_meta -- XML TIFF metadata
     """
-    date_time = None
+    acq = None
+    acqs = []
+    pages = tiff.series[0].pages
+    pages_len = len(pages)
     if xml_meta:
         try:  # OME-TIFF
-            date_time = xml_meta["OME"]["Image"].get("AcquisitionDate", None)
+            acq = xml_meta["OME"]["Image"].get("AcquisitionDate", None)
         except KeyError:  # OME-variants
-            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
-            qptiff_metadata = xml_meta.get(qptiff_ident, None)
-            if qptiff_metadata:  # PerkinElmer QPTIFF
-                try:  # fluorescence
-                    filter = xml_meta[qptiff_ident]["Responsivity"].get("Filter")
-                    if filter:  # Akoya Vectra 3
-                        if isinstance(filter, list):
-                            filter = filter[0]
-                        date_time = filter.get("Date")
-                    band = xml_meta[qptiff_ident]["Responsivity"].get("Band")
-                    if band:  # Akoya Vectra Polaris/PhenoImager HT (FOVs)
-                        if isinstance(band, list):
-                            band = band[0]
-                        date_time = band.get("Date")
-                except KeyError:  # brightfield
-                    pass  # missing
-    if not date_time:  # regular TIFF or OME-TIFF without `Date` field
-        date_time = tiff.series[0].pages[0].aspage().tags.get("DateTime")
-        if date_time:  # with baseline tag
-            date_time = datetime.strptime(str(date_time.value), "%Y:%m:%d %H:%M:%S")
-        else:  # without baseline tag
-            date_time = datetime.now()
-    if not isinstance(date_time, datetime):
-        date_time = dateutil.parser.parse(date_time)  # voodoo 🐔
-    return date_time
+            pass  # missing
+    if not acq:  # regular TIFF or OME-TIFF without timestamp
+        try:
+            acq = datetime.strptime(
+                pages[0].aspage().tags["DateTime"].value, "%Y:%m:%d %H:%M:%S"
+            )  # baseline tag
+        except KeyError:
+            acq = datetime.now()  # generated
+    if not isinstance(acq, datetime):
+        acq = parser.parse(acq)  # voodoo 🐔
+    acqs = [acq for _ in range(pages_len)]
+    return acqs
 
 
 def expo_to_si(time=1, unit="s"):
@@ -132,7 +123,7 @@ def expo_to_si(time=1, unit="s"):
     return (time, "s")
 
 
-def get_expo_times(tiff, xml_meta, channels):
+def get_expos(tiff, xml_meta, channels):
     """Get the exposure times from a TIFF object.
 
     Keyword arguments:
@@ -140,8 +131,9 @@ def get_expo_times(tiff, xml_meta, channels):
     xml_meta -- XML TIFF metadata
     channels  -- list of channels
     """
-    expo_times = []
     pages = tiff.series[0].pages
+    pages_len = len(pages)
+    expo_times = []
     if xml_meta:
         try:  # OME-TIFF
             expo_times = [
@@ -152,7 +144,7 @@ def get_expo_times(tiff, xml_meta, channels):
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
             qptiff_metadata = xml_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
-                for index in range(len(pages)):
+                for index in range(pages_len):
                     expo_times.append(
                         (get_xml_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
                     )  # unit is undefined
@@ -206,7 +198,7 @@ def get_chans(tiff, xml_meta):
                     try:  # fluorescence
                         chans.append(get_xml_meta(tiff, index)[qptiff_ident]["Name"])
                     except KeyError:  # brightfield
-                        pass  # RGB
+                        pass  # missing
     if not chans:  # regular TIFF or OME-TIFF without names
         try:
             for page in pages:
@@ -247,7 +239,7 @@ for index, FILE in enumerate(FILES):
     print(f"{index}: {os.path.split(path)[-1]}/{file}:", flush=True)
     tiff = get_tiff(FILE)
     print(f"{[chan for chan in tiff['channels']]}")
-    print(f"{tiff['date_time']}")
-    print(f"{[expo for expo in tiff['expo_times']]}")
+    print(f"{tiff['acquisitions']}")
+    print(f"{[expo for expo in tiff['exposures']]}")
     print()
     tiff["tiff"].close()
