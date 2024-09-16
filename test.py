@@ -8,9 +8,26 @@ import dateutil
 from datetime import datetime
 
 
-xml_declaration_pattern = re.compile(
-    r'<\?xml\s+version="[\d\.]+"\s*(encoding="[\w-]+")?\s*\?>'
-)  # compile once at module load time
+# compile once at module load time
+xml_pattern = re.compile(
+    r"""
+    (?:
+        # XML declaration (optional)
+        <\?xml\s+version="[\d\.]+"\s*encoding="[\w-]+"\s*\?>
+    )?
+    (
+        # XML opening tag
+        <([A-Za-z_][\w\.-]*).*?>
+        # XML body tags
+        .+?
+    )
+    (
+        # XML closing tag (corresponding)
+        </\2\s*>
+    )
+    """,
+    re.DOTALL | re.VERBOSE,
+)  # hic sunt dracones
 
 
 def get_tiff(image):
@@ -24,10 +41,10 @@ def get_tiff(image):
     """
     # open TIFF file and keep handle open for later use
     tiff = tifffile.TiffFile(image)
-    ome_meta = get_ome_meta(tiff)
-    channels = get_chans(tiff, ome_meta)
-    date_time = get_date_time(tiff, ome_meta)
-    expo_times = get_expo_times(tiff, ome_meta, channels)
+    xml_meta = get_xml_meta(tiff)
+    channels = get_chans(tiff, xml_meta)
+    date_time = get_date_time(tiff, xml_meta)
+    expo_times = get_expo_times(tiff, xml_meta, channels)
     series = tiff.series  # image file directories (IFD)
     shape = series[0].shape
     pages = tiff.pages[0 : shape[0]]
@@ -36,35 +53,35 @@ def get_tiff(image):
         "date_time": date_time,  # timestamp
         "expo_times": expo_times,  # acquisition
         "image": image,  # file path
-        "ome_meta": ome_meta,  # OME TIFF metadata
+        "xml_meta": xml_meta,  # XML TIFF metadata
         "pages": pages,  # data pages
         "shape": shape,  # dimensions
         "tiff": tiff,  # tiff object
     }
 
 
-def get_date_time(tiff, ome_meta):
+def get_date_time(tiff, xml_meta):
     """Get a datetime from the corresponding TIFF metadata.
 
     Keyword arguments:
     tiff -- the TIFF object
-    ome_meta -- OME TIFF metadata
+    xml_meta -- XML TIFF metadata
     """
     date_time = None
-    if ome_meta:
+    if xml_meta:
         try:  # OME-TIFF
-            date_time = ome_meta["OME"]["Image"].get("AcquisitionDate", None)
+            date_time = xml_meta["OME"]["Image"].get("AcquisitionDate", None)
         except KeyError:  # OME-variants
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
-            qptiff_metadata = ome_meta.get(qptiff_ident, None)
+            qptiff_metadata = xml_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 try:  # fluorescence
-                    filter = ome_meta[qptiff_ident]["Responsivity"].get("Filter")
+                    filter = xml_meta[qptiff_ident]["Responsivity"].get("Filter")
                     if filter:  # Akoya Vectra 3
                         if isinstance(filter, list):
                             filter = filter[0]
                         date_time = filter.get("Date")
-                    band = ome_meta[qptiff_ident]["Responsivity"].get("Band")
+                    band = xml_meta[qptiff_ident]["Responsivity"].get("Band")
                     if band:  # Akoya Vectra Polaris/PhenoImager HT (FOVs)
                         if isinstance(band, list):
                             band = band[0]
@@ -115,29 +132,29 @@ def expo_to_si(time=1, unit="s"):
     return (time, "s")
 
 
-def get_expo_times(tiff, ome_meta, channels):
+def get_expo_times(tiff, xml_meta, channels):
     """Get the exposure times from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
-    ome_meta -- OME TIFF metadata
+    xml_meta -- XML TIFF metadata
     channels  -- list of channels
     """
     expo_times = []
     pages = tiff.series[0].pages
-    if ome_meta:
+    if xml_meta:
         try:  # OME-TIFF
             expo_times = [
                 (chan.get("@ExposureTime", None), chan.get("@ExposureTimeUnit", "s"))
-                for chan in ome_meta["OME"]["Image"]["Pixels"]["Plane"]
+                for chan in xml_meta["OME"]["Image"]["Pixels"]["Plane"]
             ]
         except KeyError:  # OME-variants
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
-            qptiff_metadata = ome_meta.get(qptiff_ident, None)
+            qptiff_metadata = xml_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 for index in range(len(pages)):
                     expo_times.append(
-                        (get_ome_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
+                        (get_xml_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
                     )  # unit is undefined
     if not expo_times:  # regular TIFF or OME-TIFF without names
         expo_times = [(1.0, "s") for chan in channels]
@@ -145,7 +162,7 @@ def get_expo_times(tiff, ome_meta, channels):
     return expo_times
 
 
-def get_ome_meta(tiff, page=0):
+def get_xml_meta(tiff, page=0):
     """Get OME metadata from `ImageDescription` TIFF tag and return a Python dictionary.
     We're not relying on `tifffile` and its `ome_metadata` attribute, because it is too
     restrictive for OME-TIFF variants such as PerkinElmer's QPTIFF image files.
@@ -154,38 +171,40 @@ def get_ome_meta(tiff, page=0):
     tiff -- the TIFF object
     page -- the series (IFDs) index
     """
-    ome_metadata = None
+    xml_metadata = None
     img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
-    if img_dscr:  # existing TIFF comment
-        xml_start = xml_declaration_pattern.search(img_dscr.value)
-        if xml_start:  # existing XML declaration (OME-TIFF and variants)
-            ome_metadata = xmltodict.parse(img_dscr.value[xml_start.start() :])
-    return ome_metadata
+    if img_dscr:  # TIFF comment contains data
+        xml_match = re.search(xml_pattern, img_dscr.value)
+        if xml_match:  # TIFF comment matches XML pattern
+            xml_metadata = xmltodict.parse(
+                img_dscr.value[xml_match.start() : xml_match.end()]
+            )
+    return xml_metadata
 
 
-def get_chans(tiff, ome_meta):
+def get_chans(tiff, xml_meta):
     """Get the channel names from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
-    ome_meta -- OME TIFF metadata
+    xml_meta -- XML TIFF metadata
     """
     chans = []
     pages = tiff.series[0].pages
     pages_len = len(pages)
-    if ome_meta:
+    if xml_meta:
         try:  # OME-TIFF
             chans = [
                 chan.get("@Name")
-                for chan in ome_meta["OME"]["Image"]["Pixels"]["Channel"]
+                for chan in xml_meta["OME"]["Image"]["Pixels"]["Channel"]
             ]
         except KeyError:  # OME-variants
             qptiff_ident = "PerkinElmer-QPI-ImageDescription"
-            qptiff_metadata = ome_meta.get(qptiff_ident, None)
+            qptiff_metadata = xml_meta.get(qptiff_ident, None)
             if qptiff_metadata:  # PerkinElmer QPTIFF
                 for index in range(pages_len):
                     try:  # fluorescence
-                        chans.append(get_ome_meta(tiff, index)[qptiff_ident]["Name"])
+                        chans.append(get_xml_meta(tiff, index)[qptiff_ident]["Name"])
                     except KeyError:  # brightfield
                         pass  # RGB
     if not chans:  # regular TIFF or OME-TIFF without names
