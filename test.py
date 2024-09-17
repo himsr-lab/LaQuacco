@@ -17,13 +17,13 @@ xml_pattern = re.compile(
         <\?xml\s+version="[\d\.]+"\s*encoding="[\w-]+"\s*\?>
     )?
     (
-        # XML opening tag
+        # XML opening tag (mandatory)
         <([A-Za-z_][\w\.-]*).*?>
         # XML body tags
         .+?
     )
     (
-        # XML closing tag (corresponding)
+        # XML closing tag (mandatory)
         </\2\s*>
     )
     """,
@@ -241,7 +241,7 @@ for index, FILE in enumerate(FILES):
     print(f"{index}: {os.path.split(path)[-1]}/{file}:", flush=True)
     tiff = get_tiff(FILE)
     print(f"{[chan for chan in tiff['channels']]}")
-    print(f"{tiff['acquisitions']}")
-    print(f"{[expo for expo in tiff['exposures']]}")
+    print(f"{tiff['exposures']}")
+    print(f"{[expo for expo in tiff['datetimes']]}")
     print()
     tiff["tiff"].close()
