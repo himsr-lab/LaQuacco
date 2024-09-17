@@ -18,7 +18,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v1.0 (2024-07-16)
+Summary:    Laboratory Quality Control v1.0 (2024-09-17)
 DOI:        # TODO
 URL:        https://github.com/christianrickert/LaQuacco
 
@@ -30,34 +30,56 @@ Description:
 import fnmatch
 import os
 import platform
+import re
 import subprocess
 import tempfile
 import time
 import xmltodict
+import math
 import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
 from datetime import datetime
+from dateutil import parser
 
-# limit pool size for multi-threading
+# set environmental variables before imports
 try:  # macOS, Linux
     available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)
 except AttributeError:  # Windows
     available_cpu = str(os.cpu_count() // 2 or 1)
-
-# set environmental variables before imports
+os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
 os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
+import polars as pl
 import tifffile
 
-os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
-import polars as pl
+
+# compile regular expression at load time
+xml_pattern = re.compile(
+    r"""
+    (?:
+        # XML declaration (optional)
+        <\?xml\s+version="[\d\.]+"\s*encoding="[\w-]+"\s*\?>
+    )?
+    (
+        # XML opening tag (mandatory)
+        <([A-Za-z_][\w\.-]*).*?>
+        # XML body tags
+        .+?
+    )
+    (
+        # XML closing tag (mandatory)
+        </\2\s*>
+    )
+    """,
+    re.DOTALL | re.VERBOSE,
+)  # hic sunt dracones 🐉
 
 
 def copy_file(src_path="", dst_path=""):
     """Use the operating systems' native commands to copy a (remote) source file
-        to a (temporary) destination file. If the destination directory does not exist,
-        this function will create a temporary destination directiory first.
-        Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
-        required for network connections, so we're using system-native commands instead.
+       to a (temporary) destination file. If the destination directory does not exist,
+       this function will create a temporary destination directiory first.
+       Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
+       required for network connections, so we're using system-native commands instead.
 
     Keyword arguments:
     src_file  -- (remote) source file path
@@ -92,35 +114,43 @@ def copy_file(src_path="", dst_path=""):
     return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
-def get_chans(tiff):
+def get_chans(tiff, xml_meta):
     """Get the channel names from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
+    xml_meta -- XML TIFF metadata
     """
     chans = []
-    ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # OME-TIFF
-        ome_dict = xmltodict.parse(ome_metadata)
-        try:  # image list
-            channel = ome_dict["OME"]["Image"][0]["Pixels"]["Channel"]
-        except KeyError:  # image dictionary
-            channel = ome_dict["OME"]["Image"]["Pixels"]["Channel"]
-        finally:
-            chans = [chan["@Name"] for chan in channel]
-    else:  # regular TIFF
-        pages = tiff.series[0].pages
-        try:  # baseline tags
+    pages = tiff.series[0].pages
+    pages_len = len(pages)
+    if xml_meta:
+        try:  # OME-TIFF
+            chans = [
+                chan.get("@Name")
+                for chan in xml_meta["OME"]["Image"]["Pixels"]["Channel"]
+            ]
+        except KeyError:  # OME-variants
+            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
+            qptiff_metadata = xml_meta.get(qptiff_ident, None)
+            if qptiff_metadata:  # PerkinElmer QPTIFF
+                for index in range(pages_len):
+                    try:  # fluorescence
+                        chans.append(get_xml_meta(tiff, index)[qptiff_ident]["Name"])
+                    except KeyError:  # brightfield
+                        pass  # missing
+    if not chans:  # regular TIFF or OME-TIFF without names
+        try:
             for page in pages:
                 chans.append(page.aspage().tags["PageName"].value)
         except KeyError:  # generic tags
-            chans = [f"Channel {channel}" for channel in range(1, len(pages) + 1)]
+            chans = [f"Channel {channel}" for channel in range(1, pages_len + 1)]
     return chans
 
 
 def get_chan_data(imgs_chans_data, chan, data, length=1):
     """Returns channel data from image data dictionaries.
-    Works across all images to retrieve the channel data.
+       Works across all images to retrieve the channel data.
 
     Keyword arguments:
     imgs_chans_data -- dictionaries with image data
@@ -141,61 +171,102 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     return chan_data
 
 
-def get_datetime(tiff):
-    """Get a datetime from the corresponding TIFF metadata.
+def get_dates(tiff, xml_meta):
+    """Get the acquisition timestamps from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
+    xml_meta -- XML TIFF metadata
     """
-    date_time = None
-    ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # OME-TIFF
-        ome_dict = xmltodict.parse(ome_metadata)
-        date_time = ome_dict["OME"]["Image"].get("AcquisitionDate", None)
-        try:  # 1989 C standard
-            date_time = datetime.strptime(date_time, "%Y-%m-%dT%H:%M:%S")
-        except ValueError:  # others
-            date_time = datetime.strptime(
-                date_time[:26] + date_time[27:], "%Y-%m-%dT%H:%M:%S.%f%z"
-            )
-    else:  # regular TIFF
-        pages = tiff.series[0].pages
-        try:  # baseline tags
-            date_time = datetime.strptime(
-                pages[0].tags.get("DateTime", None).value, "%Y:%m:%d %H:%M:%S"
-            )
-        except ValueError:
-            pass
-    if not date_time:
-        date_time = datetime.strptime("1900:00:00T00:00:00", "%Y:%m:%d %H:%M:%S")
-    return date_time
+    acq = None
+    acqs = []
+    pages = tiff.series[0].pages
+    pages_len = len(pages)
+    if xml_meta:
+        try:  # OME-TIFF
+            acq = xml_meta["OME"]["Image"].get("AcquisitionDate", None)
+        except KeyError:  # OME-variants
+            pass  # missing
+    if not acq:  # regular TIFF or OME-TIFF without timestamp
+        try:
+            acq = datetime.strptime(
+                pages[0].aspage().tags["DateTime"].value, "%Y:%m:%d %H:%M:%S"
+            )  # baseline tag
+        except KeyError:
+            acq = datetime.now()  # generated
+    if not isinstance(acq, datetime):
+        acq = parser.parse(acq)  # voodoo 🐔
+    acqs = [acq for _ in range(pages_len)]
+    return acqs
 
 
-def get_expotimes(tiff):
+def get_expos(tiff, xml_meta, channels):
     """Get the exposure times from a TIFF object.
 
     Keyword arguments:
     tiff -- the TIFF object
+    xml_meta -- XML TIFF metadata
+    channels  -- list of channels
     """
-    expotimes = []
-    ome_metadata = tiff.ome_metadata
-    if ome_metadata:  # OME-TIFF
-        ome_dict = xmltodict.parse(ome_metadata)
-        plane = ome_dict["OME"]["Image"]["Pixels"].get("Plane", None)
-        if plane:
-            expotimes = [plan["@ExposureTime"] for plan in plane]
-        else:
-            sizec = int(ome_dict["OME"]["Image"]["Pixels"].get("@SizeC", None))
-            expotimes = [1.0 for channel in range(1, sizec)]
-    else:  # regular TIFF
-        pages = tiff.series[0].pages
-        expotimes = [1.0 for channel in range(1, len(pages) + 1)]
-    return expotimes
+    pages = tiff.series[0].pages
+    pages_len = len(pages)
+    expo_times = []
+    if xml_meta:
+        try:  # OME-TIFF
+            expo_times = [
+                (chan.get("@ExposureTime", None), chan.get("@ExposureTimeUnit", "s"))
+                for chan in xml_meta["OME"]["Image"]["Pixels"]["Plane"]
+            ]
+        except KeyError:  # OME-variants
+            qptiff_ident = "PerkinElmer-QPI-ImageDescription"
+            qptiff_metadata = xml_meta.get(qptiff_ident, None)
+            if qptiff_metadata:  # PerkinElmer QPTIFF
+                for index in range(pages_len):
+                    expo_times.append(
+                        (get_xml_meta(tiff, index)[qptiff_ident]["ExposureTime"], "µs")
+                    )  # unit is undefined
+    if not expo_times:  # regular TIFF or OME-TIFF without names
+        expo_times = [(1.0, "s") for chan in channels]
+    expo_times = [get_expo_si(float(time), str(unit)) for time, unit in expo_times]
+    return expo_times
 
 
-def get_files(path="", pat=None, anti=None, recurse=False):
+def get_expo_si(time=1, unit="s"):
+    """Convert exposure times with custom exposure unit to SI value/unit tuple.
+
+    Keyword arguments:
+    expo -- tuple with exposure time and exposure unit
+    """
+    ome_units = {
+        "Ys": math.pow(10.0, 24),  # yotta
+        "Zs": math.pow(10.0, 21),  # zetta
+        "Es": math.pow(10.0, 18),  # exa
+        "Ps": math.pow(10.0, 15),  # peta
+        "Ts": math.pow(10.0, 12),  # tera
+        "Gs": math.pow(10.0, 9),  # giga
+        "Ms": math.pow(10.0, 6),  # mega
+        "ks": math.pow(10.0, 3),  # kilo
+        "hs": math.pow(10.0, 2),  # hecto
+        "das": math.pow(10.0, 1),  # deca
+        "ds": math.pow(10.0, -1),  # deci
+        "cs": math.pow(10.0, -2),  # centi
+        "ms": math.pow(10.0, -3),  # milli
+        "µs": math.pow(10.0, -6),  # micro
+        "ns": math.pow(10.0, -9),  # nano
+        "ps": math.pow(10.0, -12),  # pico
+        "fs": math.pow(10.0, -15),  # femto
+        "as": math.pow(10.0, -18),  # atto
+        "zs": math.pow(10.0, -21),  # zepto
+        "ys": math.pow(10.0, -24),  # yocto
+    }
+    if unit in ome_units:
+        time = time * ome_units[unit]
+    return (time, "s")
+
+
+def get_files(path="", pat="*", anti="", recurse=False):
     """Iterate through all files in a directory structure and
-    return a list of matching files.
+       return a list of matching files.
 
     Keyword arguments:
     path -- the path to a directory containing files (default "")
@@ -216,7 +287,7 @@ def get_files(path="", pat=None, anti=None, recurse=False):
 
 def get_img_data(imgs_chans_data, img, data):
     """Returns image data from image data dictionaries.
-    Works across all channels to retrieve the image data.
+       Works across all channels to retrieve the image data.
 
     Keyword arguments:
     imgs_chans_data -- dictionaries with image data
@@ -241,7 +312,7 @@ def get_img_data(imgs_chans_data, img, data):
 
 def get_stats(array, chan_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
-    implementation is significantly faster - especially for large Numpy arrays.
+       implementation is significantly faster - especially for large Numpy arrays.
 
     Keyword arguments:
     array -- Numpy array
@@ -307,37 +378,32 @@ def get_stats(array, chan_stats=(None, None, None)):
     return (total, size, mean, (minimum, maximum), (band_0, band_1, band_2, band_3))
 
 
-def get_tiff(image):
-    """Open the TIFF file object and return its hanlde
-    plus additional information about the first series
-    as a descriptive TIFF dictionary.
-    Don't forget to close the file after using it!
+def get_image(image):
+    """Open the image as TIFF file object and return its hanlde plus additional metadata
+    as a Python dictionary. Don't forget to close the file after using it!
 
     Keyword arguments:
-    image -- image file
+    image -- image file path
     """
     # open TIFF file and keep handle open for later use
     tiff = tifffile.TiffFile(image)
-    series = tiff.series  # descreasing resolutions
-    shape = series[0].shape
-    pages = tiff.pages[0 : shape[0]]
-    channels = get_chans(tiff)
-    date_time = get_datetime(tiff)
-    expo_times = get_expotimes(tiff)
+    xml_meta = get_xml_meta(tiff)
+    channels = get_chans(tiff, xml_meta)
+    datetimes = get_dates(tiff, xml_meta)
+    exposures = get_expos(tiff, xml_meta, channels)
+    # return metadata and tiff object
     return {
-        "tiff": tiff,  # file object
-        "image": image,  # file path
-        "shape": shape,  # dimensions
-        "pages": pages,  # data pages
-        "channels": channels,  # labels
-        "datetime": date_time,  # timestamp
-        "expotimes": expo_times,  # acquisition
+        "channels": channels,  # channel labels
+        "exposures": exposures,  # exposure times
+        "datetimes": datetimes,  # acquisition timestamps
+        "image": image,  # image file path
+        "tiff": tiff,  # tiff object
     }
 
 
 def get_time_left(start=None, current=None, total=None):
     """Return a time string representing the remainder based on
-    the durations of the previous iterations (rough estimate).
+       the durations of the previous iterations (rough estimate).
 
     Keyword arguments:
     start  -- start time from call to `time.time()`
@@ -413,3 +479,36 @@ def stats_img_data(tiff, chans_stats=None):
         ) = get_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
+
+
+def get_xml_meta(tiff, page=0):
+    """Get OME metadata from `ImageDescription` TIFF tag and return a Python dictionary.
+    We're not relying on `tifffile` and its `ome_metadata` attribute, because it is too
+    restrictive for OME-TIFF variants such as PerkinElmer's QPTIFF image files.
+
+    Keyword arguments:
+    tiff -- the TIFF object
+    page -- the series (IFDs) index
+    """
+    xml_metadata = None
+    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
+    if img_dscr:  # TIFF comment contains data
+        xml_match = re.search(xml_pattern, img_dscr.value)
+        if xml_match:  # TIFF comment matches XML pattern
+            xml_metadata = xmltodict.parse(
+                img_dscr.value[xml_match.start() : xml_match.end()]
+            )
+    return xml_metadata
+
+
+if __name__ == "__main__":
+    # Execute when the module is not initialized from an import statement.
+    files = get_files(path="./tests/Akoya Biosciences", pat="*.tif")
+    copies = [copy_file(file) for file in files]
+    images = [get_image(copy) for copy in copies]
+    for image in images:
+        print(image, "\n")
+        image["tiff"].close()
+    for copy in copies:
+        os.remove(copy)
+        print(f"Removed: {copy}")
