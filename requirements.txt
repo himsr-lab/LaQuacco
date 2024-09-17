@@ -1,5 +1,6 @@
 # python>=3.12
 jupyterlab
 polars-u64-idx
+pytest
 tifffile[all]
 xmltodict
