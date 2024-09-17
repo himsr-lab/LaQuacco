@@ -46,11 +46,13 @@ def get_tiff(image):
     channels = get_chans(tiff, xml_meta)
     datetimes = get_dates(tiff, xml_meta)
     exposures = get_expos(tiff, xml_meta, channels)
+    """
     # correct for missing IFDs (Standard BioTools)
     if len(datetimes) < len(channels):
         datetimes = [datetimes[0] for _ in channels]
     if len(exposures) < len(channels):
         exposures = [exposures[0] for _ in channels]
+    """
     # return metadata and tiff object
     return {
         "channels": channels,  # channel labels
