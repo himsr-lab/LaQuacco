@@ -9,28 +9,26 @@ import laquacco as laq
 
 
 class TestLaquacco:
+    files = []
+
     def test_get_files(self):
         relpath = "./tests"
-        files = laq.get_files(path=relpath, pat="*.ome.tiff")
-        files_normalized = [file.replace("\\", "/") for file in files]  # Windows
+        self.files = laq.get_files(path=relpath, pat="*.ome.tiff")
+        files_normalized = [file.replace("\\", "/") for file in self.files]  # Windows
         files_expected = [f"{relpath}/image_{count + 1}.ome.tiff" for count in range(5)]
         assert files_normalized == files_expected
 
     def test_copy_files(self):
-        relpath = "./tests"
-        files = laq.get_files(path=relpath, pat="*.ome.tiff")
-        copies = [laq.copy_file(file) for file in files]
+        copies = [laq.copy_file(file) for file in self.files]
         for index, copy in enumerate(copies):
-            # warnings.warn(f"Copy: {copy}")
             assert os.path.exists(copy)
-            assert os.path.getsize(files[index]) == os.path.getsize(copy)
+            assert os.path.getsize(self.files[index]) == os.path.getsize(copy)
             os.remove(copy)
 
     def test_get_tiff(self):
-        relpath = "./tests"
-        files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
-        images = [laq.get_image(file) for file in files]
         channels = 3
+        files = sorted(self.files)  # order matters for `datetimes`
+        images = [laq.get_image(file) for file in files]
         channels_expected = [f"Channel {count + 1}" for count in range(channels)]
         exposures_expected = [(0.0005, "s") for count in range(channels)]
         datetimes_expected = [
