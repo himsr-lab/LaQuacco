@@ -333,72 +333,49 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_stats(array, chan_stats=(None, None, None)):
+def get_chan_stats(chan_pixls, imgs_chan_stats=None):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
        implementation is significantly faster - especially for large Numpy arrays.
 
     Keyword arguments:
-    array -- Numpy array
-    chan_stats -- channel's statistics (mean, min, max)
+    chan_pixls -- Numpy array with channel pixels
+    img_chan_stats -- channel statistics across images
     """
-    chan_mean = chan_stats[0]
-    chan_min = chan_stats[1]
-    chan_max = chan_stats[2]
-    get_bands = chan_mean and chan_min and chan_max
-    arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    if get_bands:
-        pixls = arrow.filter(
-            pl.col("pixls") >= chan_min
-        )  # exclude below-threshold regions
-    else:
-        pixls = arrow.filter(pl.col("pixls") > chan_min)  # exclude non-signal regions
-    total, size = len(arrow), len(pixls)
-    mean, minimum, maximum = None, None, None
-    band_0, band_1, band_2, band_3 = None, None, None, None
-    if size:
-        # prepare vectors calculations
+    arrow = pl.from_numpy(chan_pixls.ravel(), schema=["pixls"], orient="col")  # fast
+    pixls = arrow.filter(pl.col("pixls") > 0)
+    # prepare vector calculations
+    if not imgs_chan_stats:  # get initial stats
         stats = [
+            pl.col("pixls").max().alias("max"),
             pl.col("pixls").mean().alias("mean"),
             pl.col("pixls").min().alias("min"),
-            pl.col("pixls").max().alias("max"),
         ]
-        if get_bands:
-            # [0---band_0---(mean)---band_1---|---band_2---|---band_3---(max)]
-            bands_range = chan_max - chan_mean
-            lim_1 = chan_mean + 1.0 / 3.0 * bands_range
-            lim_2 = chan_mean + 2.0 / 3.0 * bands_range
-            stats.extend(
-                [
-                    pl.col("pixls")
-                    .filter((pl.col("pixls") < chan_mean))
-                    .mean()
-                    .alias("band_0"),
-                    pl.col("pixls")
-                    .filter((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
-                    .mean()
-                    .alias("band_1"),
-                    pl.col("pixls")
-                    .filter((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
-                    .mean()
-                    .alias("band_2"),
-                    pl.col("pixls")
-                    .filter((pl.col("pixls") >= lim_2))
-                    .mean()
-                    .alias("band_3"),
-                ]
-            )
-        # apply vector calculations
-        result = pixls.select(stats)  # iterate over pixels only once
-        # retrieve vector calculations
-        mean = result.select("mean").item()
-        minimum = result.select("min").item()
-        maximum = result.select("max").item()
-        if get_bands:
-            band_0 = result.select("band_0").item()
-            band_1 = result.select("band_1").item()
-            band_2 = result.select("band_2").item()
-            band_3 = result.select("band_3").item()
-    return (total, size, mean, (minimum, maximum), (band_0, band_1, band_2, band_3))
+    else:  # don't repeat previous stats
+        upper_range = imgs_chan_stats["max"] - imgs_chan_stats["min"]
+        lim_0 = imgs_chan_stats["mean"]
+        lim_1 = lim_0 + (1.0 / 3.0) * upper_range
+        lim_2 = lim_0 + (2.0 / 3.0) * upper_range
+        stats = [
+            # band_0:  [(0.0)-lim_0]
+            pl.col("pixls").filter((pl.col("pixls") <= lim_0)).mean().alias("band_0"),
+            # band_1:   [(mean)-lim_1]
+            pl.col("pixls")
+            .filter((pl.col("pixls") > lim_0) & (pl.col("pixls") <= lim_1))
+            .mean()
+            .alias("band_1"),
+            # band_2:   [(lim_1)-lim_2]
+            pl.col("pixls")
+            .filter((pl.col("pixls") > lim_1) & (pl.col("pixls") <= lim_2))
+            .mean()
+            .alias("band_2"),
+            # band_3:   [(lim_2)-]
+            pl.col("pixls").filter((pl.col("pixls") > lim_2)).mean().alias("band_3"),
+        ]
+    # retrieve results in a single iteration
+    results = pixls.select(stats)
+    return {
+        stats: value[0] for stats, value in results.to_dict(as_series=False).items()
+    }
 
 
 def get_timestamp(timestamp):
@@ -471,7 +448,7 @@ def get_xml_meta(tiff, page=0):
     return xml_metadata
 
 
-def stats_img_data(tiff, chans_stats=None):
+def get_img_chans_stats(tiff, chans_stats=None):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
@@ -496,6 +473,6 @@ def stats_img_data(tiff, chans_stats=None):
             img_chans_data[chan]["mean"],
             img_chans_data[chan]["minmax"],
             img_chans_data[chan]["bands"],
-        ) = get_stats(pixls, chans_stats[chan])
+        ) = get_chan_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data

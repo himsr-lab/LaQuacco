@@ -2,6 +2,7 @@ import os
 import sys
 from datetime import datetime
 import warnings
+import numpy as np
 
 # import laquacco from local path
 sys.path.append(os.path.abspath(os.path.join("../", "laquacco")))
@@ -10,6 +11,8 @@ import laquacco as laq
 
 class TestLaquacco:
     files = []
+    images = []
+    imgs_chans_stats = []
 
     def test_get_files(self):
         relpath = "./tests"
@@ -38,11 +41,29 @@ class TestLaquacco:
             [datetime(2024, 9, 17, 14, 43, 19) for _ in range(channels)],
             [datetime(2024, 9, 17, 14, 43, 20) for _ in range(channels)],
         ]
-
         for index, image in enumerate(images):
             assert image["channels"] == channels_expected
             assert image["exposures"] == exposures_expected
             assert image["datetimes"] == datetimes_expected[index]
             assert image["image"] == files[index]
             assert image["tiff"].is_ome
-            image["tiff"].close()
+            # image["tiff"].close()
+
+    def test_get_chan_stats(self):
+        np.random.seed(42)  # set fixed seed
+        test_array = np.random.randint(0, 256, size=512 * 512)
+        # raw stats (based on channel values)
+        chan_stats = laq.get_chan_stats(test_array)
+        chan_stats_expected = {"max": 255, "mean": 127.86960567684419, "min": 1}
+        assert chan_stats == chan_stats_expected
+        # group stats (based on channel averages)
+        chan_stats = laq.get_chan_stats(
+            test_array, {"max": 192, "mean": 128, "min": 64}
+        )
+        chan_stats_expected = {
+            "band_0": 64.45206899442832,
+            "band_1": 149.47300991567047,
+            "band_2": 191.9446401610468,
+            "band_3": 234.40679147117572,
+        }
+        assert chan_stats == chan_stats_expected
