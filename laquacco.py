@@ -285,6 +285,29 @@ def get_files(path="", pat="*", anti="", recurse=False):
     return FILES
 
 
+def get_image(image):
+    """Open the image as TIFF file object and return its hanlde plus additional metadata
+    as a Python dictionary. Don't forget to close the file after using it!
+
+    Keyword arguments:
+    image -- image file path
+    """
+    # open TIFF file and keep handle open for later use
+    tiff = tifffile.TiffFile(image)
+    xml_meta = get_xml_meta(tiff)
+    channels = get_chans(tiff, xml_meta)
+    datetimes = get_dates(tiff, xml_meta)
+    exposures = get_expos(tiff, xml_meta, channels)
+    # return metadata and tiff object
+    return {
+        "channels": channels,  # channel labels
+        "exposures": exposures,  # exposure times
+        "datetimes": datetimes,  # acquisition timestamps
+        "image": image,  # image file path
+        "tiff": tiff,  # tiff object
+    }
+
+
 def get_img_data(imgs_chans_data, img, data):
     """Returns image data from image data dictionaries.
        Works across all channels to retrieve the image data.
@@ -378,27 +401,13 @@ def get_stats(array, chan_stats=(None, None, None)):
     return (total, size, mean, (minimum, maximum), (band_0, band_1, band_2, band_3))
 
 
-def get_image(image):
-    """Open the image as TIFF file object and return its hanlde plus additional metadata
-    as a Python dictionary. Don't forget to close the file after using it!
+def get_timestamp(timestamp):
+    """Get a timestamp from a corresponding TIFF tag string.
 
     Keyword arguments:
-    image -- image file path
+    timestamp  -- the timestamp string
     """
-    # open TIFF file and keep handle open for later use
-    tiff = tifffile.TiffFile(image)
-    xml_meta = get_xml_meta(tiff)
-    channels = get_chans(tiff, xml_meta)
-    datetimes = get_dates(tiff, xml_meta)
-    exposures = get_expos(tiff, xml_meta, channels)
-    # return metadata and tiff object
-    return {
-        "channels": channels,  # channel labels
-        "exposures": exposures,  # exposure times
-        "datetimes": datetimes,  # acquisition timestamps
-        "image": image,  # image file path
-        "tiff": tiff,  # tiff object
-    }
+    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
 
 
 def get_time_left(start=None, current=None, total=None):
@@ -442,13 +451,24 @@ def get_time_left(start=None, current=None, total=None):
     return time_str.strip()
 
 
-def get_timestamp(timestamp):
-    """Get a timestamp from a corresponding TIFF tag string.
+def get_xml_meta(tiff, page=0):
+    """Get OME metadata from `ImageDescription` TIFF tag and return a Python dictionary.
+    We're not relying on `tifffile` and its `ome_metadata` attribute, because it is too
+    restrictive for OME-TIFF variants such as PerkinElmer's QPTIFF image files.
 
     Keyword arguments:
-    timestamp  -- the timestamp string
+    tiff -- the TIFF object
+    page -- the series (IFDs) index
     """
-    return datetime.datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
+    xml_metadata = None
+    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
+    if img_dscr:  # TIFF comment contains data
+        xml_match = re.search(xml_pattern, img_dscr.value)
+        if xml_match:  # TIFF comment matches XML pattern
+            xml_metadata = xmltodict.parse(
+                img_dscr.value[xml_match.start() : xml_match.end()]
+            )
+    return xml_metadata
 
 
 def stats_img_data(tiff, chans_stats=None):
@@ -479,23 +499,3 @@ def stats_img_data(tiff, chans_stats=None):
         ) = get_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
-
-
-def get_xml_meta(tiff, page=0):
-    """Get OME metadata from `ImageDescription` TIFF tag and return a Python dictionary.
-    We're not relying on `tifffile` and its `ome_metadata` attribute, because it is too
-    restrictive for OME-TIFF variants such as PerkinElmer's QPTIFF image files.
-
-    Keyword arguments:
-    tiff -- the TIFF object
-    page -- the series (IFDs) index
-    """
-    xml_metadata = None
-    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
-    if img_dscr:  # TIFF comment contains data
-        xml_match = re.search(xml_pattern, img_dscr.value)
-        if xml_match:  # TIFF comment matches XML pattern
-            xml_metadata = xmltodict.parse(
-                img_dscr.value[xml_match.start() : xml_match.end()]
-            )
-    return xml_metadata
