@@ -499,16 +499,3 @@ def get_xml_meta(tiff, page=0):
                 img_dscr.value[xml_match.start() : xml_match.end()]
             )
     return xml_metadata
-
-
-if __name__ == "__main__":
-    # Execute when the module is not initialized from an import statement.
-    files = get_files(path="./tests/Akoya Biosciences", pat="*.tif")
-    copies = [copy_file(file) for file in files]
-    images = [get_image(copy) for copy in copies]
-    for image in images:
-        print(image, "\n")
-        image["tiff"].close()
-    for copy in copies:
-        os.remove(copy)
-        print(f"Removed: {copy}")
