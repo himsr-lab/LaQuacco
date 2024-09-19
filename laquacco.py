@@ -171,6 +171,68 @@ def get_chan_data(imgs_chans_data, chan, data, length=1):
     return chan_data
 
 
+def get_chan_stats(
+    chan_pixls,
+    imgs_chan_stats=None,
+):
+    """Get channel statistics depending on input. Without additional (group)
+       statistics, the function will return the max, mean, and min values of
+       the input pixels. By providing an additional function argument with
+       previously determined (average) statistics, the function returns new
+       statistics that depend on the averages without repitition.
+
+    Keyword arguments:
+    chan_pixls -- Polars lazy dataframe with channel pixels
+    img_chan_stats -- channel statistics across images ("max", "mean", "min")
+    """
+    result = {}
+    if (
+        imgs_chan_stats
+        and ("max" in imgs_chan_stats and imgs_chan_stats["max"] is not None)
+        and ("min" in imgs_chan_stats and imgs_chan_stats["min"] is not None)
+    ):
+        # get additional channel stats
+        signal_interval = imgs_chan_stats["max"] - imgs_chan_stats["min"]
+        signal_limit_0 = 0.25 * signal_interval
+        signal_limit_1 = 0.50 * signal_interval
+        signal_limit_2 = 0.75 * signal_interval
+        stats = [
+            # band_0: [?,signal_limit_0]
+            pl.col("pixls")
+            .filter((pl.col("pixls") <= signal_limit_0))
+            .mean()
+            .alias("band_0"),
+            # band_1: ]signal_limit_0,signal_limit_1]
+            pl.col("pixls")
+            .filter(
+                (pl.col("pixls") > signal_limit_0) & (pl.col("pixls") <= signal_limit_1)
+            )
+            .mean()
+            .alias("band_1"),
+            # band_2: ]signal_limit_1,signal_limit_2]
+            pl.col("pixls")
+            .filter(
+                (pl.col("pixls") > signal_limit_1) & (pl.col("pixls") <= signal_limit_2)
+            )
+            .mean()
+            .alias("band_2"),
+            # band_3: ]signal_limit_2,?]
+            pl.col("pixls")
+            .filter((pl.col("pixls") > signal_limit_2))
+            .mean()
+            .alias("band_3"),
+        ]
+    else:
+        # get initial channel stats
+        stats = [
+            pl.col("pixls").max().alias("max"),
+            pl.col("pixls").mean().alias("mean"),
+            pl.col("pixls").min().alias("min"),
+        ]
+    result = get_query_results(chan_pixls, stats)
+    return result
+
+
 def get_dates(tiff, xml_meta):
     """Get the acquisition timestamps from a TIFF object.
 
@@ -333,49 +395,21 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_chan_stats(chan_pixls, imgs_chan_stats=None):
-    """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
-       implementation is significantly faster - especially for large Numpy arrays.
+def get_query_results(chan_pixls, query):
+    """Using Polars' aggregation function to lazily evaluate the results
+       of the (aggregation) functions used. Since we're using a lazy
+       dataframe, we have to collect the results to force evaluation.
 
     Keyword arguments:
-    chan_pixls -- Numpy array with channel pixels
-    img_chan_stats -- channel statistics across images
+    chan_pixls -- Polars lazy dataframe with channel pixels
+    query -- list with aggregation functions
     """
-    arrow = pl.from_numpy(chan_pixls.ravel(), schema=["pixls"], orient="col")  # fast
-    pixls = arrow.filter(pl.col("pixls") > 0)
-    # prepare vector calculations
-    if not imgs_chan_stats:  # get initial stats
-        stats = [
-            pl.col("pixls").max().alias("max"),
-            pl.col("pixls").mean().alias("mean"),
-            pl.col("pixls").min().alias("min"),
-        ]
-    else:  # don't repeat previous stats
-        upper_range = imgs_chan_stats["max"] - imgs_chan_stats["min"]
-        lim_0 = imgs_chan_stats["mean"]
-        lim_1 = lim_0 + (1.0 / 3.0) * upper_range
-        lim_2 = lim_0 + (2.0 / 3.0) * upper_range
-        stats = [
-            # band_0:  [(0.0)-lim_0]
-            pl.col("pixls").filter((pl.col("pixls") <= lim_0)).mean().alias("band_0"),
-            # band_1:   [(mean)-lim_1]
-            pl.col("pixls")
-            .filter((pl.col("pixls") > lim_0) & (pl.col("pixls") <= lim_1))
-            .mean()
-            .alias("band_1"),
-            # band_2:   [(lim_1)-lim_2]
-            pl.col("pixls")
-            .filter((pl.col("pixls") > lim_1) & (pl.col("pixls") <= lim_2))
-            .mean()
-            .alias("band_2"),
-            # band_3:   [(lim_2)-]
-            pl.col("pixls").filter((pl.col("pixls") > lim_2)).mean().alias("band_3"),
-        ]
-    # retrieve results in a single iteration
-    results = pixls.select(stats)
-    return {
-        stats: value[0] for stats, value in results.to_dict(as_series=False).items()
-    }
+    query = chan_pixls.select(query)  # queue computation request
+    results = {
+        stats: value[0]
+        for stats, value in query.collect().to_dict(as_series=False).items()
+    }  # execute computation request
+    return results
 
 
 def get_timestamp(timestamp):
@@ -476,3 +510,22 @@ def get_img_chans_stats(tiff, chans_stats=None):
         ) = get_chan_stats(pixls, chans_stats[chan])
     tiff["tiff"].close()
     return img_chans_data
+
+
+def set_chan_interval(pixls, limits={"lower": None, "upper": None}):
+    """Filter the channel values for a user-specified interval.
+       The limits are closed interval endpoints.
+
+    Keyword arguments:
+    pixls -- Polars lazy dataframe with channel pixels
+    limits -- dictionary with "lower" and "upper" interval limits
+    """
+    # arrow = pl.from_numpy(chan_pixls.ravel(), schema=["pixls"], orient="col")  # fast
+    interval_limits = pl.lit(True)  # Start with a True literal to safely build upon
+    if "lower" in limits and limits["lower"] is not None:
+        lower_condition = pl.col("pixls") >= limits["lower"]
+        interval_limits = interval_limits & lower_condition
+    if "upper" in limits and limits["upper"] is not None:
+        upper_condition = pl.col("pixls") <= limits["upper"]
+        interval_limits = interval_limits & upper_condition
+    return pixls.filter(interval_limits)

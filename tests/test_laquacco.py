@@ -1,8 +1,8 @@
 import os
 import sys
 from datetime import datetime
-import warnings
 import numpy as np
+import polars as pl
 
 # import laquacco from local path
 sys.path.append(os.path.abspath(os.path.join("../", "laquacco")))
@@ -13,6 +13,10 @@ class TestLaquacco:
     files = []
     images = []
     imgs_chans_stats = []
+    np.random.seed(42)  # set fixed seed
+    test_array = np.random.randint(0, 256, size=512 * 512)
+    # create lazy DataFrame from NumPy array without cloning
+    test_frame = pl.DataFrame(test_array.ravel(), schema=["pixls"], orient="col").lazy()
 
     def test_get_files(self):
         relpath = "./tests"
@@ -47,23 +51,61 @@ class TestLaquacco:
             assert image["datetimes"] == datetimes_expected[index]
             assert image["image"] == files[index]
             assert image["tiff"].is_ome
-            # image["tiff"].close()
+            image["tiff"].close()
+
+    def test_query_results(self):
+        pixls = self.test_frame
+        stats_results = laq.get_query_results(
+            pixls, [pl.col("pixls").mean().alias("mean")]
+        )
+        expected_results = {"mean": 127.37548065185547}
+        assert stats_results == expected_results
+
+    def test_set_chan_interval(self):
+        query = [
+            pl.col("pixls").max().alias("max"),
+            pl.col("pixls").mean().alias("mean"),
+            pl.col("pixls").min().alias("min"),
+        ]
+        # unlimited
+        limits = {"lower": None, "upper": None}
+        pixls = laq.set_chan_interval(self.test_frame, limits)
+        stats_results = laq.get_query_results(pixls, query)
+        stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
+        assert stats_results == stats_expected
+
+        # lower limit
+        limits = {"lower": 64}
+        pixls = laq.set_chan_interval(self.test_frame, limits)
+        stats_results = laq.get_query_results(pixls, query)
+        stats_expected = {"max": 255, "mean": 159.2938392720988, "min": 64}
+        assert stats_results == stats_expected
+
+        # upper limit
+        limits = {"upper": 192}
+        pixls = laq.set_chan_interval(self.test_frame, limits)
+        stats_results = laq.get_query_results(pixls, query)
+        stats_expected = {"max": 192, "mean": 95.99974737395223, "min": 0}
+        assert stats_results == stats_expected
+
+        # lower and upper limit
+        limits = {"lower": 64, "upper": 192}
+        pixls = laq.set_chan_interval(self.test_frame, limits)
+        stats_results = laq.get_query_results(pixls, query)
+        stats_expected = {"max": 192, "mean": 127.89909212343498, "min": 64}
+        assert stats_results == stats_expected
 
     def test_get_chan_stats(self):
-        np.random.seed(42)  # set fixed seed
-        test_array = np.random.randint(0, 256, size=512 * 512)
         # raw stats (based on channel values)
-        chan_stats = laq.get_chan_stats(test_array)
-        chan_stats_expected = {"max": 255, "mean": 127.86960567684419, "min": 1}
+        chan_stats = laq.get_chan_stats(self.test_frame)
+        chan_stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert chan_stats == chan_stats_expected
         # group stats (based on channel averages)
-        chan_stats = laq.get_chan_stats(
-            test_array, {"max": 192, "mean": 128, "min": 64}
-        )
+        chan_stats = laq.get_chan_stats(self.test_frame, {"max": 255, "min": 0})
         chan_stats_expected = {
-            "band_0": 64.45206899442832,
-            "band_1": 149.47300991567047,
-            "band_2": 191.9446401610468,
-            "band_3": 234.40679147117572,
+            "band_0": 31.382288195187574,
+            "band_1": 95.35042657055523,
+            "band_2": 159.48075548594107,
+            "band_3": 223.58119422209955,
         }
         assert chan_stats == chan_stats_expected
