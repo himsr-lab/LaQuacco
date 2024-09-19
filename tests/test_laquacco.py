@@ -73,21 +73,18 @@ class TestLaquacco:
         stats_results = laq.get_query_results(pixls, query)
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
-
         # lower limit
         limits = {"lower": 64}
         pixls = laq.set_chan_interval(self.test_frame, limits)
         stats_results = laq.get_query_results(pixls, query)
         stats_expected = {"max": 255, "mean": 159.2938392720988, "min": 64}
         assert stats_results == stats_expected
-
         # upper limit
         limits = {"upper": 192}
         pixls = laq.set_chan_interval(self.test_frame, limits)
         stats_results = laq.get_query_results(pixls, query)
         stats_expected = {"max": 192, "mean": 95.99974737395223, "min": 0}
         assert stats_results == stats_expected
-
         # lower and upper limit
         limits = {"lower": 64, "upper": 192}
         pixls = laq.set_chan_interval(self.test_frame, limits)
