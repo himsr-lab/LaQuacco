@@ -20,7 +20,7 @@ class TestLaquacco:
 
     def test_get_files(self):
         relpath = "./tests"
-        self.files = laq.get_files(path=relpath, pat="*.ome.tiff")
+        self.files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
         files_normalized = [file.replace("\\", "/") for file in self.files]  # Windows
         files_expected = [f"{relpath}/image_{count + 1}.ome.tiff" for count in range(5)]
         assert files_normalized == files_expected
@@ -34,8 +34,7 @@ class TestLaquacco:
 
     def test_get_tiff(self):
         channels = 3
-        files = sorted(self.files)  # order matters for `datetimes`
-        images = [laq.get_image(file) for file in files]
+        images = [laq.get_image(file) for file in self.files]
         channels_expected = [f"Channel {count + 1}" for count in range(channels)]
         exposures_expected = [(0.0005, "s") for count in range(channels)]
         datetimes_expected = [
@@ -49,7 +48,7 @@ class TestLaquacco:
             assert image["channels"] == channels_expected
             assert image["exposures"] == exposures_expected
             assert image["datetimes"] == datetimes_expected[index]
-            assert image["image"] == files[index]
+            assert image["image"] == self.files[index]
             assert image["tiff"].is_ome
             image["tiff"].close()
 
