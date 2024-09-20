@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from datetime import datetime
 import numpy as np
 import polars as pl
@@ -10,17 +11,6 @@ import laquacco as laq
 
 
 class TestLaquacco:
-    # test_array = np.random.randint(0, 256, size=512 * 512)
-    # create lazy DataFrame from NumPy array without cloning
-    # test_frame = pl.DataFrame(test_array.ravel(), schema=["pixls"], orient="col").lazy()
-
-    def test_get_files(self):
-        relpath = "./tests"
-        files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
-        files_normalized = [file.replace("\\", "/") for file in files]  # Windows
-        files_expected = [f"{relpath}/image_{count + 1}.ome.tiff" for count in range(5)]
-        assert files_normalized == files_expected
-
     def test_copy_files(self):
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
@@ -30,11 +20,25 @@ class TestLaquacco:
             assert os.path.getsize(files[index]) == os.path.getsize(copy)
             os.remove(copy)
 
-    def test_get_image(self):
+    def test_get_expo_si(self):
+        expo_si_result = laq.get_expo_si()
+        expo_si_expected = (1.0, "s")
+        assert expo_si_result == expo_si_expected
+        expo_si_result = laq.get_expo_si(expo=(1_000_000, "µs"))
+        assert expo_si_result == expo_si_expected
+
+    def test_get_files(self):
+        relpath = "./tests"
+        files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
+        files_normalized = [file.replace("\\", "/") for file in files]  # Windows
+        files_expected = [f"{relpath}/image_{count + 1}.ome.tiff" for count in range(5)]
+        assert files_normalized == files_expected
+
+    def test_get_img(self):
         channels = 3
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
-        images = [laq.get_image(file) for file in files]
+        images = [laq.get_img(file) for file in files]
         channels_expected = [f"Channel {count + 1}" for count in range(channels)]
         exposures_expected = [(0.0005, "s") for count in range(channels)]
         datetimes_expected = [
@@ -50,7 +54,71 @@ class TestLaquacco:
             assert image["datetimes"] == datetimes_expected[index]
             assert image["file"] == files[index]
             assert image["tiff"].is_ome
-            # image["tiff"].close()
+            image["tiff"].close()
+
+    def test_get_img_chans_stats(self):
+        relpath = "./tests"
+        files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
+        image = laq.get_img(files[0])
+        img_chans_stats_results = laq.get_img_chans_stats(image)
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "max": 254,
+                "mean": 127.22773742675781,
+                "min": 0,
+            },
+            "Channel 2": {
+                "max": 254,
+                "mean": 126.92438888549805,
+                "min": 0,
+            },
+            "Channel 3": {
+                "max": 254,
+                "mean": 127.03819274902344,
+                "min": 0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        img_chans_stats_bands = laq.get_img_chans_stats(image, img_chans_stats_expected)
+        for chan in image["channels"]:
+            img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "band_0": 31.507623345733975,
+                "band_1": 95.59399091934058,
+                "band_2": 159.0898668639053,
+                "band_3": 222.4419774028413,
+                "max": 254,
+                "mean": 127.22773742675781,
+                "min": 0,
+            },
+            "Channel 2": {
+                "band_0": 31.42919612384203,
+                "band_1": 95.59504094700353,
+                "band_2": 159.03978531003938,
+                "band_3": 222.4341479817201,
+                "max": 254,
+                "mean": 126.92438888549805,
+                "min": 0,
+            },
+            "Channel 3": {
+                "band_0": 31.46214345478056,
+                "band_1": 95.53991631799163,
+                "band_2": 158.92303417616006,
+                "band_3": 222.4427634973142,
+                "max": 254,
+                "mean": 127.03819274902344,
+                "min": 0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        image["tiff"].close()
+
+    def test_get_time_left(self):
+        start = time.time() - 86_523  # begin of tracking
+        get_time_left_result = laq.get_time_left(start, current=1, total=2)
+        get_time_left_expected = "1d 2m 3s"
+        assert get_time_left_result == get_time_left_expected
 
     def test_query_results(self):
         np.random.seed(42)
@@ -112,22 +180,11 @@ class TestLaquacco:
         chan_stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert chan_stats == chan_stats_expected
         # group stats (based on channel averages)
-        chan_stats = laq.get_chan_stats(test_frame, {"max": 255, "min": 0})
+        chan_stats_results = laq.get_chan_stats(test_frame, {"max": 255, "min": 0})
         chan_stats_expected = {
             "band_0": 31.382288195187574,
             "band_1": 95.35042657055523,
             "band_2": 159.48075548594107,
             "band_3": 223.58119422209955,
         }
-        assert chan_stats == chan_stats_expected
-
-
-"""
-    def test_get_img_chans_stats(self):
-        # img_chans_stats = {}
-        # img_chans_stats_expected = {}
-        # for image in self.images:
-        #    img_chans_stats.update(laq.get_img_chans_stats(image))
-        # assert img_chans_stats == img_chans_stats_expected
-        assert self.images
-"""
+        assert chan_stats_results == chan_stats_expected
