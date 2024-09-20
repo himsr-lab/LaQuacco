@@ -18,7 +18,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v1.0 (2024-09-20)
+Summary:    Laboratory Quality Control v2.0 (2024-09-20)
 DOI:        # TODO
 URL:        https://github.com/christianrickert/LaQuacco
 
@@ -470,7 +470,6 @@ def set_chan_interval(pixls, limits={"lower": None, "upper": None}):
     pixls -- Polars lazy dataframe with channel pixels
     limits -- dictionary with "lower" and "upper" interval limits
     """
-    # arrow = pl.from_numpy(chan_pixls.ravel(), schema=["pixls"], orient="col")  # fast
     interval_limits = pl.lit(True)  # Start with a True literal to safely build upon
     if "lower" in limits and limits["lower"] is not None:
         lower_condition = pl.col("pixls") >= limits["lower"]
