@@ -1,4 +1,5 @@
 # python>=3.12
+ipympl
 jupyterlab
 polars-u64-idx
 pytest
