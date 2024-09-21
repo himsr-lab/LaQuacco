@@ -31,22 +31,24 @@ class TestLaquacco:
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
         files_normalized = [file.replace("\\", "/") for file in files]  # Windows
-        files_expected = [f"{relpath}/image_{count + 1}.ome.tiff" for count in range(5)]
+        files_expected = [
+            f"{relpath}/image_{count}.ome.tiff" for count in range(len(files))
+        ]
         assert files_normalized == files_expected
 
     def test_get_img(self):
-        channels = 3
+        channels = 2
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
         images = [laq.get_img(file) for file in files]
         channels_expected = [f"Channel {count + 1}" for count in range(channels)]
-        exposures_expected = [(0.0005, "s") for count in range(channels)]
+        exposures_expected = [(0.001, "s") for count in range(channels)]
         datetimes_expected = [
-            [datetime(2024, 9, 17, 14, 43, 14) for _ in range(channels)],
-            [datetime(2024, 9, 17, 14, 43, 16) for _ in range(channels)],
-            [datetime(2024, 9, 17, 14, 43, 17) for _ in range(channels)],
-            [datetime(2024, 9, 17, 14, 43, 19) for _ in range(channels)],
-            [datetime(2024, 9, 17, 14, 43, 20) for _ in range(channels)],
+            [datetime(2024, 9, 21, 11, 2, 34) for _ in range(channels)],
+            [datetime(2024, 9, 21, 11, 4, 4) for _ in range(channels)],
+            [datetime(2024, 9, 21, 11, 5, 34) for _ in range(channels)],
+            [datetime(2024, 9, 21, 11, 7, 4) for _ in range(channels)],
+            [datetime(2024, 9, 21, 11, 8, 34) for _ in range(channels)],
         ]
         for index, image in enumerate(images):
             assert image["channels"] == channels_expected
@@ -64,19 +66,14 @@ class TestLaquacco:
         img_chans_stats_results = laq.get_img_chans_stats(image)
         img_chans_stats_expected = {
             "Channel 1": {
-                "max": 254,
-                "mean": 127.22773742675781,
-                "min": 0,
+                "max": 65535.0,
+                "mean": 32782.00732421875,
+                "min": 1,
             },
             "Channel 2": {
-                "max": 254,
-                "mean": 126.92438888549805,
-                "min": 0,
-            },
-            "Channel 3": {
-                "max": 254,
-                "mean": 127.03819274902344,
-                "min": 0,
+                "max": 65535.0,
+                "mean": 32704.648582458496,
+                "min": 1,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -87,31 +84,22 @@ class TestLaquacco:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
         img_chans_stats_expected = {
             "Channel 1": {
-                "band_0": 31.507623345733975,
-                "band_1": 95.59399091934058,
-                "band_2": 159.0898668639053,
-                "band_3": 222.4419774028413,
-                "max": 254,
-                "mean": 127.22773742675781,
-                "min": 0,
+                "band_0": 8214.364063219273,
+                "band_1": 24555.067025187614,
+                "band_2": 40951.59750784511,
+                "band_3": 57305.21220726085,
+                "max": 65535.0,
+                "mean": 32782.00732421875,
+                "min": 1,
             },
             "Channel 2": {
-                "band_0": 31.42919612384203,
-                "band_1": 95.59504094700353,
-                "band_2": 159.03978531003938,
-                "band_3": 222.4341479817201,
-                "max": 254,
-                "mean": 126.92438888549805,
-                "min": 0,
-            },
-            "Channel 3": {
-                "band_0": 31.46214345478056,
-                "band_1": 95.53991631799163,
-                "band_2": 158.92303417616006,
-                "band_3": 222.4427634973142,
-                "max": 254,
-                "mean": 127.03819274902344,
-                "min": 0,
+                "band_0": 8160.632097563943,
+                "band_1": 24574.91840362923,
+                "band_2": 40953.56259066731,
+                "band_3": 57314.890790972626,
+                "max": 65535.0,
+                "mean": 32704.648582458496,
+                "min": 1,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -124,19 +112,14 @@ class TestLaquacco:
         img_chans_stats_results = laq.get_img_chans_stats(image, chans_limits)
         img_chans_stats_expected = {
             "Channel 1": {
-                "max": 254,
-                "mean": 159.16820651620912,
-                "min": 64,
+                "max": 65535.0,
+                "mean": 32813.52257419089,
+                "min": 64.0,
             },
             "Channel 2": {
-                "max": 192,
-                "mean": 96.17882236964536,
-                "min": 0,
-            },
-            "Channel 3": {
-                "max": 192,
-                "mean": 128.00584601226532,
-                "min": 64,
+                "max": 190.0,
+                "mean": 95.26388888888889,
+                "min": 1.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -147,31 +130,22 @@ class TestLaquacco:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
         img_chans_stats_expected = {
             "Channel 1": {
-                "band_0": None,
-                "band_1": 79.56124510284035,
-                "band_2": 119.00521081036372,
-                "band_3": 198.49579737368316,
-                "max": 254,
-                "mean": 159.16820651620912,
-                "min": 64,
+                "band_0": 8239.367939072521,
+                "band_1": 24536.89122636347,
+                "band_2": 40918.14127085812,
+                "band_3": 57283.29903468437,
+                "max": 65535.0,
+                "mean": 32813.52257419089,
+                "min": 64.0,
             },
             "Channel 2": {
-                "band_0": 23.980917015826368,
-                "band_1": 72.59036315971305,
-                "band_2": 120.4819888790394,
-                "band_3": 168.5316499062897,
-                "max": 192,
-                "mean": 96.17882236964536,
-                "min": 0,
-            },
-            "Channel 3": {
-                "band_0": None,
-                "band_1": 64.0,
-                "band_2": 80.5084410043881,
-                "band_3": 144.43674180286368,
-                "max": 192,
-                "mean": 128.00584601226532,
-                "min": 64,
+                "band_0": 22.372340425531913,
+                "band_1": 70.8625,
+                "band_2": 117.85714285714286,
+                "band_3": 166.29473684210527,
+                "max": 190.0,
+                "mean": 95.26388888888889,
+                "min": 1.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
