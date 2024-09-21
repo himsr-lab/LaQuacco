@@ -377,18 +377,19 @@ def get_img_chans_stats(image, chans_limits={}, chans_stats={}):
     chans_stats  -- channels' statistics (mean, min, and max)
     """
     img_chans_stats = {}
+    # pre-allocate memory for NumPy array
+    axes = image["tiff"].pages[0].axes
+    shape = image["tiff"].pages[0].shape
+    alloc = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))
     for page, chan in zip(image["tiff"].pages, image["channels"]):
-        # create lazy Polars DataFrame from NumPy array
-        pixls = pl.DataFrame(
-            page.aspage().asarray().ravel(), schema=["pixls"], orient="col"
-        ).lazy()
-        # filter DataFrame to user-specified interval
-        if chan in chans_limits and (
-            chans_limits[chan].get("lower") is not None
-            or chans_limits[chan].get("upper") is not None
-        ):
-            pixls = set_chan_interval(pixls, chans_limits[chan])
-        # calculate channel statistics
+        # create and filter lazy Polars DataFrame
+        pixls = set_chan_interval(
+            pl.DataFrame(
+                page.aspage().asarray(out=alloc).ravel(), schema=["pixls"], orient="col"
+            ).lazy(),
+            chans_limits.get(chan),
+        )
+        # calculate channel statistics from pixel data
         if chan in chans_stats and chans_stats[chan] is not None:
             img_chans_stats[chan] = get_chan_stats(pixls, chans_stats[chan])
         else:
@@ -479,11 +480,14 @@ def set_chan_interval(pixls, limits={"lower": None, "upper": None}):
     pixls -- Polars lazy dataframe with channel pixels
     limits -- dictionary with "lower" and "upper" interval limits
     """
-    interval_limits = pl.lit(True)  # True literal to start
-    if "lower" in limits and limits["lower"] is not None:
-        lower_condition = pl.col("pixls") >= limits["lower"]
-        interval_limits = interval_limits & lower_condition
-    if "upper" in limits and limits["upper"] is not None:
-        upper_condition = pl.col("pixls") <= limits["upper"]
-        interval_limits = interval_limits & upper_condition
-    return pixls.filter(interval_limits)
+    if limits:
+        interval_limits = pl.lit(True)  # True literal to start
+        if "lower" in limits and limits["lower"] is not None:
+            lower_condition = pl.col("pixls") >= limits["lower"]
+            interval_limits = interval_limits & lower_condition
+        if "upper" in limits and limits["upper"] is not None:
+            upper_condition = pl.col("pixls") <= limits["upper"]
+            interval_limits = interval_limits & upper_condition
+        return pixls.filter(interval_limits)
+    else:  # no limits
+        return pixls
