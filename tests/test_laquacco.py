@@ -60,6 +60,7 @@ class TestLaquacco:
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
         image = laq.get_img(files[0])
+        # unlimited
         img_chans_stats_results = laq.get_img_chans_stats(image)
         img_chans_stats_expected = {
             "Channel 1": {
@@ -79,7 +80,9 @@ class TestLaquacco:
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
-        img_chans_stats_bands = laq.get_img_chans_stats(image, img_chans_stats_expected)
+        img_chans_stats_bands = laq.get_img_chans_stats(
+            image, chans_stats=img_chans_stats_expected
+        )
         for chan in image["channels"]:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
         img_chans_stats_expected = {
@@ -109,6 +112,66 @@ class TestLaquacco:
                 "max": 254,
                 "mean": 127.03819274902344,
                 "min": 0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        # limited interval
+        chans_limits = {
+            "Channel 1": {"lower": 64, "upper": None},
+            "Channel 2": {"lower": None, "upper": 192},
+            "Channel 3": {"lower": 64, "upper": 192},
+        }
+        img_chans_stats_results = laq.get_img_chans_stats(image, chans_limits)
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "max": 254,
+                "mean": 159.16820651620912,
+                "min": 64,
+            },
+            "Channel 2": {
+                "max": 192,
+                "mean": 96.17882236964536,
+                "min": 0,
+            },
+            "Channel 3": {
+                "max": 192,
+                "mean": 128.00584601226532,
+                "min": 64,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        img_chans_stats_bands = laq.get_img_chans_stats(
+            image, chans_limits, img_chans_stats_expected
+        )
+        for chan in image["channels"]:
+            img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "band_0": None,
+                "band_1": 79.56124510284035,
+                "band_2": 119.00521081036372,
+                "band_3": 198.49579737368316,
+                "max": 254,
+                "mean": 159.16820651620912,
+                "min": 64,
+            },
+            "Channel 2": {
+                "band_0": 23.980917015826368,
+                "band_1": 72.59036315971305,
+                "band_2": 120.4819888790394,
+                "band_3": 168.5316499062897,
+                "max": 192,
+                "mean": 96.17882236964536,
+                "min": 0,
+            },
+            "Channel 3": {
+                "band_0": None,
+                "band_1": 64.0,
+                "band_2": 80.5084410043881,
+                "band_3": 144.43674180286368,
+                "max": 192,
+                "mean": 128.00584601226532,
+                "min": 64,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
