@@ -148,29 +148,6 @@ def get_chans(tiff, xml_meta):
     return chans
 
 
-def get_chan_data(imgs_chans_data, chan, data, length=1):
-    """Returns channel data from image data dictionaries.
-       Works across all images to retrieve the channel data.
-
-    Keyword arguments:
-    imgs_chans_data -- dictionaries with image data
-    chan -- the key determining the channel value
-    data -- the key determining the channel data
-    length -- length of the data tuple
-    """
-    chan_data = []
-    empty = tuple(None for n in range(0, length)) if length > 1 else None
-    for _img, chans_data in imgs_chans_data.items():
-        if chan in chans_data and chan not in ["metadata"]:
-            chan_data.append(chans_data[chan][data])
-        else:  # channel missing in image
-            chan_data.append(empty)
-    # convert to Numpy array, keep Python datatype
-    chan_data = np.array(chan_data, dtype="float")
-    chan_data[chan_data is None] = np.nan
-    return chan_data
-
-
 def get_chan_stats(chan_pixls, imgs_chan_stats=None):
     """Get channel statistics depending on input. Without additional (group)
        statistics, the function will return the max, mean, and min values of
@@ -366,6 +343,24 @@ def get_img(file):
         "file": file,  # image file path
         "tiff": tiff,  # tiff object
     }
+
+
+def get_imgs_chan_stats(imgs_chans_stats, chan, value):
+    """Returns channel data from image stats dictionaries.
+       as NumPy array for calculations and plotting.
+
+    Keyword arguments:
+    imgs_chans_stats -- dictionary with channel stats for each image
+    chan -- the key determining the channel value as a string
+    stats -- the key determining the channel stats as a string
+    """
+    stats_values = np.empty(len(imgs_chans_stats))
+    for index, (img, chans_stats) in enumerate(imgs_chans_stats.items()):
+        if chan in chans_stats and value in chans_stats[chan]:
+            stats_values[index] = imgs_chans_stats[img][chan][value]
+        else:
+            stats_values[index] = np.nan
+    return stats_values
 
 
 def get_img_chans_stats(image, chans_limits={}, chans_stats={}):

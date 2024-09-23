@@ -58,6 +58,26 @@ class TestLaquacco:
             assert image["tiff"].is_ome
             image["tiff"].close()
 
+    def test_get_imgs_chan_stats(self):
+        imgs_chans_stats = {
+            "image_1": {"channel_1": {"stat_1": 1.0, "stat_2": 3.0}},
+            "image_2": {"channel_1": {"stat_1": 2.0}},
+        }
+        imgs_chan_stats_result = laq.get_imgs_chan_stats(
+            imgs_chans_stats, "channel_1", "stat_1"
+        )
+        imgs_chan_stats_expected = np.array([1.0, 2.0])
+        assert np.array_equal(
+            imgs_chan_stats_result, imgs_chan_stats_expected, equal_nan=False
+        )
+        imgs_chan_stats_result = laq.get_imgs_chan_stats(
+            imgs_chans_stats, "channel_1", "stat_2"
+        )
+        imgs_chan_stats_expected = np.array([3.0, np.nan])
+        assert np.array_equal(
+            imgs_chan_stats_result, imgs_chan_stats_expected, equal_nan=True
+        )
+
     def test_get_img_chans_stats(self):
         relpath = "./tests"
         files = sorted(laq.get_files(path=relpath, pat="*.ome.tiff"))
