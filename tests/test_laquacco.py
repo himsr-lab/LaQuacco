@@ -67,9 +67,7 @@ class TestLaquacco:
             imgs_chans_stats, "channel_1", "stat_1"
         )
         imgs_chan_stats_expected = np.array([1.0, 2.0])
-        assert np.array_equal(
-            imgs_chan_stats_result, imgs_chan_stats_expected, equal_nan=False
-        )
+        assert np.array_equal(imgs_chan_stats_result, imgs_chan_stats_expected)
         imgs_chan_stats_result = laq.get_imgs_chan_stats(
             imgs_chans_stats, "channel_1", "stat_2"
         )
