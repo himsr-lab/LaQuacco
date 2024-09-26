@@ -345,7 +345,7 @@ def get_img(file):
     }
 
 
-def get_imgs_chan_stats(imgs_chans_stats, chan, value):
+def get_imgs_chan_stats(imgs_chans_stats, chan, stats):
     """Returns channel data from image stats dictionaries.
        as NumPy array for calculations and plotting.
 
@@ -356,8 +356,8 @@ def get_imgs_chan_stats(imgs_chans_stats, chan, value):
     """
     stats_values = np.empty(len(imgs_chans_stats))
     for index, (img, chans_stats) in enumerate(imgs_chans_stats.items()):
-        if chan in chans_stats and value in chans_stats[chan]:
-            stats_values[index] = imgs_chans_stats[img][chan][value]
+        if chan in chans_stats and stats in chans_stats[chan]:
+            stats_values[index] = imgs_chans_stats[img][chan][stats]
         else:
             stats_values[index] = np.nan
     return stats_values
