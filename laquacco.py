@@ -340,18 +340,18 @@ def get_img(file):
         "channels": channels,  # channel labels
         "exposures": exposures,  # exposure times
         "datetimes": datetimes,  # acquisition timestamps
-        "file": file,  # image file path
+        "file": str(file),  # image file path
         "tiff": tiff,  # tiff object
     }
 
 
-def get_img_chans_stats(image, chans_limits={}, chans_stats={}):
+def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     image -- TIFF metadata and tiff object
     chans_limits -- channels' interval boundaries (lower and upper)
-    chans_stats  -- channels' statistics (mean, min, and max)
+    chans_means  -- mean channels' statistics (min and max)
     """
     img_chans_stats = {}
     # pre-allocate memory for NumPy array
@@ -367,8 +367,8 @@ def get_img_chans_stats(image, chans_limits={}, chans_stats={}):
             chans_limits.get(chan),
         )
         # calculate channel statistics from pixel data
-        if chan in chans_stats and chans_stats[chan] is not None:
-            img_chans_stats[chan] = get_chan_stats(pixls, chans_stats[chan])
+        if chan in chans_means and chans_means[chan] is not None:
+            img_chans_stats[chan] = get_chan_stats(pixls, chans_means[chan])
         else:
             img_chans_stats[chan] = get_chan_stats(pixls)
     return img_chans_stats

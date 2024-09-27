@@ -78,7 +78,7 @@ class TestLaquacco:
         }
         assert img_chans_stats_results == img_chans_stats_expected
         img_chans_stats_bands = laq.get_img_chans_stats(
-            image, chans_stats=img_chans_stats_expected
+            image, chans_means=img_chans_stats_expected
         )
         for chan in image["channels"]:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
