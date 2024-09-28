@@ -163,36 +163,44 @@ def get_chan_stats(chan_pixls, imgs_chan_stats=None):
     if (
         imgs_chan_stats
         and ("max" in imgs_chan_stats and imgs_chan_stats["max"] is not None)
+        and ("mean" in imgs_chan_stats and imgs_chan_stats["mean"] is not None)
         and ("min" in imgs_chan_stats and imgs_chan_stats["min"] is not None)
     ):
         # get additional channel stats
-        signal_interval = imgs_chan_stats["max"] - imgs_chan_stats["min"]
-        signal_limit_0 = 0.25 * signal_interval
-        signal_limit_1 = 0.50 * signal_interval
-        signal_limit_2 = 0.75 * signal_interval
+        signal_range = imgs_chan_stats["max"] - imgs_chan_stats["mean"]
+        signal_limit_0 = imgs_chan_stats["mean"]
+        signal_limit_1 = imgs_chan_stats["mean"] + (1.0 / 3.0) * signal_range
+        signal_limit_2 = imgs_chan_stats["mean"] + (2.0 / 3.0) * signal_range
+
         stats = [
-            # band_0: [?,signal_limit_0]
-            pl.col("pixls")
-            .filter((pl.col("pixls") <= signal_limit_0))
-            .mean()
-            .alias("band_0"),
-            # band_1: ]signal_limit_0,signal_limit_1]
+            # band_0: [min,signal_limit_0[
             pl.col("pixls")
             .filter(
-                (pl.col("pixls") > signal_limit_0) & (pl.col("pixls") <= signal_limit_1)
+                (pl.col("pixls") >= imgs_chan_stats["min"])
+                & (pl.col("pixls") < signal_limit_0)
+            )
+            .mean()
+            .alias("band_0"),
+            # band_1: [signal_limit_0,signal_limit_1[
+            pl.col("pixls")
+            .filter(
+                (pl.col("pixls") >= signal_limit_0) & (pl.col("pixls") < signal_limit_1)
             )
             .mean()
             .alias("band_1"),
-            # band_2: ]signal_limit_1,signal_limit_2]
+            # band_2: [signal_limit_1,signal_limit_2[
             pl.col("pixls")
             .filter(
-                (pl.col("pixls") > signal_limit_1) & (pl.col("pixls") <= signal_limit_2)
+                (pl.col("pixls") >= signal_limit_1) & (pl.col("pixls") < signal_limit_2)
             )
             .mean()
             .alias("band_2"),
-            # band_3: ]signal_limit_2,?]
+            # band_3: [signal_limit_2,max]
             pl.col("pixls")
-            .filter((pl.col("pixls") > signal_limit_2))
+            .filter(
+                (pl.col("pixls") >= signal_limit_2)
+                & (pl.col("pixls") <= imgs_chan_stats["max"])
+            )
             .mean()
             .alias("band_3"),
         ]

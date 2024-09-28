@@ -84,19 +84,19 @@ class TestLaquacco:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
         img_chans_stats_expected = {
             "Channel 1": {
-                "band_0": 31.580078271995184,
-                "band_1": 95.56676157650232,
-                "band_2": 159.4273558578761,
-                "band_3": 223.61814747166412,
+                "band_0": 63.64429467202343,
+                "band_1": 148.93715502870901,
+                "band_2": 191.50675353870187,
+                "band_3": 234.13767428007668,
                 "max": 255.0,
                 "mean": 127.630746875,
                 "min": 0.0,
             },
             "Channel 2": {
-                "band_0": 31.487712218028722,
-                "band_1": 95.53149690102047,
-                "band_2": 159.4692337533945,
-                "band_3": 223.45975257370876,
+                "band_0": 63.426024677173615,
+                "band_1": 148.50665778961385,
+                "band_2": 191.0556114464565,
+                "band_3": 234.02182591500952,
                 "max": 255.0,
                 "mean": 127.389440625,
                 "min": 0.0,
@@ -130,19 +130,19 @@ class TestLaquacco:
             img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
         img_chans_stats_expected = {
             "Channel 1": {
-                "band_0": None,
-                "band_1": 79.50962669938158,
-                "band_2": 119.57328957836118,
-                "band_3": 199.52674623752688,
+                "band_0": 111.63802937342776,
+                "band_1": 175.53152024063166,
+                "band_2": 207.47546437482671,
+                "band_3": 239.528255955486,
                 "max": 255.0,
                 "mean": 159.49946312188382,
                 "min": 64.0,
             },
             "Channel 2": {
-                "band_0": 24.014317055334363,
-                "band_1": 72.51777903909719,
-                "band_2": 120.52741301159845,
-                "band_3": 168.50567650594363,
+                "band_0": 47.43199880166768,
+                "band_1": 111.49771141292113,
+                "band_2": 143.45990094056432,
+                "band_3": 176.00994735182084,
                 "max": 192.0,
                 "mean": 95.9103757753552,
                 "min": 0.0,
@@ -217,11 +217,13 @@ class TestLaquacco:
         chan_stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert chan_stats == chan_stats_expected
         # group stats (based on channel averages)
-        chan_stats_results = laq.get_chan_stats(test_frame, {"max": 255, "min": 0})
+        chan_stats_results = laq.get_chan_stats(
+            test_frame, {"max": 255, "mean": 127.37548065185547, "min": 0}
+        )
         chan_stats_expected = {
-            "band_0": 31.382288195187574,
-            "band_1": 95.35042657055523,
-            "band_2": 159.48075548594107,
-            "band_3": 223.58119422209955,
+            "band_0": 63.449992757545495,
+            "band_1": 148.46955978046915,
+            "band_2": 190.95798953166783,
+            "band_3": 233.92799564022798,
         }
         assert chan_stats_results == chan_stats_expected
