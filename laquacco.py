@@ -173,12 +173,9 @@ def get_chan_stats(chan_pixls, imgs_chan_stats=None):
         signal_limit_2 = imgs_chan_stats["mean"] + (2.0 / 3.0) * signal_range
 
         stats = [
-            # band_0: [min,signal_limit_0[
+            # band_0: [−∞,signal_limit_0[
             pl.col("pixls")
-            .filter(
-                (pl.col("pixls") >= imgs_chan_stats["min"])
-                & (pl.col("pixls") < signal_limit_0)
-            )
+            .filter(pl.col("pixls") < signal_limit_0)
             .mean()
             .alias("band_0"),
             # band_1: [signal_limit_0,signal_limit_1[
@@ -195,12 +192,9 @@ def get_chan_stats(chan_pixls, imgs_chan_stats=None):
             )
             .mean()
             .alias("band_2"),
-            # band_3: [signal_limit_2,max]
+            # band_3: [signal_limit_2,+∞]
             pl.col("pixls")
-            .filter(
-                (pl.col("pixls") >= signal_limit_2)
-                & (pl.col("pixls") <= imgs_chan_stats["max"])
-            )
+            .filter((pl.col("pixls") >= signal_limit_2))
             .mean()
             .alias("band_3"),
         ]
