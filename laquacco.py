@@ -162,9 +162,9 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     """
     result = {}
     # create Polars DataFrame
-    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # copy
+    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col").lazy()  # copy
     # set filter on lazy dataframe
-    interval = set_chan_interval(frame, chan_limits)  # in-place or copy
+    interval = set_chan_interval(frame, chan_limits)  # in-place or copy, lazy
     # prepare computation of statistics
     cbands = chan_means and all(
         [
@@ -188,13 +188,19 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
         sign_lim_2 = chan_means["mean"] + (2.0 / 3.0) * sign_range
         query = [
             # band_0: [−∞, sign_lim_0[
-            row.filter(row < sign_lim_0).mean().alias("band_0"),
+            pl.when(row < sign_lim_0).then(row).mean().alias("band_0"),
             # band_1: [sign_lim_0, sign_lim_1[
-            row.filter((row >= sign_lim_0) & (row < sign_lim_1)).mean().alias("band_1"),
+            pl.when((row >= sign_lim_0) & (row < sign_lim_1))
+            .then(row)
+            .mean()
+            .alias("band_1"),
             # band_2: [sign_lim_1, sign_lim_2[
-            row.filter((row >= sign_lim_1) & (row < sign_lim_2)).mean().alias("band_2"),
+            pl.when((row >= sign_lim_1) & (row < sign_lim_2))
+            .then(row)
+            .mean()
+            .alias("band_2"),
             # band_3: [sign_lim_2, +∞]
-            row.filter(row >= sign_lim_2).mean().alias("band_3"),
+            pl.when(row >= sign_lim_2).then(row).mean().alias("band_3"),
         ]
     result = get_query_results(interval, query)
     return result
@@ -373,7 +379,8 @@ def get_query_results(frame, query):
     frame -- Polars dataframe with channel pixels
     query -- list with aggregation functions
     """
-    stats = frame.select(query)  # execute computation request
+    queue = frame.select(query)  # queue computation request (lazy)
+    stats = queue.collect()  # execute computation request
     results = {stat: stats.select(stat).item() for stat in stats.columns}
     return results
 

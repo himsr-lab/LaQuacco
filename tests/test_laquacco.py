@@ -181,7 +181,9 @@ class TestLaquacco:
     def test_set_chan_interval(self):
         np.random.seed(42)
         test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.from_numpy(test_array.ravel(), schema=["pixls"], orient="col")
+        test_frame = pl.from_numpy(
+            test_array.ravel(), schema=["pixls"], orient="col"
+        ).lazy()
         row = pl.col("pixls")
         query = [
             row.max().alias("max"),
