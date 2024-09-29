@@ -196,52 +196,41 @@ class TestLaquacco:
         get_time_left_expected = "1d 2m 3s"
         assert get_time_left_result == get_time_left_expected
 
-    def test_query_results(self):
-        np.random.seed(42)
-        test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.from_numpy(
-            test_array.ravel(), schema=["pixls"], orient="col"
-        ).lazy()
-        query = [
-            pl.col("pixls").mean().alias("mean"),
-        ]
-        stats_results = laq.get_query_results(test_frame, query)
-        expected_results = {"mean": 127.37548065185547}
-        assert stats_results == expected_results
-
     def test_set_chan_interval(self):
         np.random.seed(42)
         test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.from_numpy(
-            test_array.ravel(), schema=["pixls"], orient="col"
-        ).lazy()
+        test_frame = pl.from_numpy(test_array.ravel(), schema=["pixls"], orient="col")
+        row = pl.col("pixls")
         query = [
-            pl.col("pixls").max().alias("max"),
-            pl.col("pixls").mean().alias("mean"),
-            pl.col("pixls").min().alias("min"),
+            row.max().alias("max"),
+            row.mean().alias("mean"),
+            row.min().alias("min"),
         ]
         # unlimited with None
         limits = None  # {}
-        pixls = laq.set_chan_interval(test_frame, limits)
-        stats_results = laq.get_query_results(pixls, query)
+        test_filter = laq.set_chan_interval(test_frame, limits)
+        stats = test_filter.select(query)
+        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
         # unlimited with dictionary
         limits = {"lower": None, "upper": None}
-        pixls = laq.set_chan_interval(test_frame, limits)
-        stats_results = laq.get_query_results(pixls, query)
+        test_filter = laq.set_chan_interval(test_frame, limits)
+        stats = test_filter.select(query)
+        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
-        # upper limit
         limits = {"upper": 192}
-        pixls = laq.set_chan_interval(test_frame, limits)
-        stats_results = laq.get_query_results(pixls, query)
+        test_filter = laq.set_chan_interval(test_frame, limits)
+        stats = test_filter.select(query)
+        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
         stats_expected = {"max": 192, "mean": 95.99974737395223, "min": 0}
         assert stats_results == stats_expected
         # lower and upper limit
         limits = {"lower": 64, "upper": 192}
-        pixls = laq.set_chan_interval(test_frame, limits)
-        stats_results = laq.get_query_results(pixls, query)
+        test_filter = laq.set_chan_interval(test_frame, limits)
+        stats = test_filter.select(query)
+        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
         stats_expected = {"max": 192, "mean": 127.89909212343498, "min": 64}
         assert stats_results == stats_expected
 

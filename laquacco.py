@@ -161,10 +161,10 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     chan_means -- channel's statistics ("max", "mean", "min")
     """
     result = {}
-    # create lazy Polars DataFrame (shadowing NumPy array)
-    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col").lazy()  # fast
-    # set filter on lazy dataframe
-    interval = set_chan_interval(frame, chan_limits)
+    # create Polars DataFrame
+    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # fast
+    # set filter on dataframe
+    frame = set_chan_interval(frame, chan_limits)
     # prepare computation of statistics
     cbands = chan_means and all(
         [
@@ -187,22 +187,21 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
         signal_limit_2 = chan_means["mean"] + (2.0 / 3.0) * signal_range
         query_cbands = [
             # band_0: [−∞, signal_limit_0[
-            pl.when(row < signal_limit_0).then(row).mean().alias("band_0"),
+            row.filter(row < signal_limit_0).mean().alias("band_0"),
             # band_1: [signal_limit_0, signal_limit_1[
-            pl.when((row >= signal_limit_0) & (row < signal_limit_1))
-            .then(row)
+            row.filter((row >= signal_limit_0) & (row < signal_limit_1))
             .mean()
             .alias("band_1"),
             # band_2: [signal_limit_1, signal_limit_2[
-            pl.when((row >= signal_limit_1) & (row < signal_limit_2))
-            .then(row)
+            row.filter((row >= signal_limit_1) & (row < signal_limit_2))
             .mean()
             .alias("band_2"),
             # band_3: [signal_limit_2, +∞]
-            pl.when(row >= signal_limit_2).then(row).mean().alias("band_3"),
+            row.filter(row >= signal_limit_2).mean().alias("band_3"),
         ]
         query_stats.extend(query_cbands)
-    result = get_query_results(interval, query_stats)
+    stats = frame.select(query_stats)  # execute computation request
+    result = {stat: stats.select(stat).item() for stat in stats.columns}
     return result
 
 
@@ -456,13 +455,13 @@ def set_chan_interval(frame, limits={"lower": None, "upper": None}):
     if limits and any(
         [lim in limits and limits[lim] is not None for lim in ["lower", "upper"]]
     ):
-        interval_limits = pl.lit(True)  # True literal to start
+        query_limits = pl.lit(True)  # True literal to start
         if limits.get("lower"):
             lower_condition = row >= limits["lower"]
-            interval_limits = interval_limits & lower_condition
+            query_limits = query_limits & lower_condition
         if limits.get("upper"):
             upper_condition = row <= limits["upper"]
-            interval_limits = interval_limits & upper_condition
-        return frame.filter(interval_limits)
+            query_limits = query_limits & upper_condition
+        return frame.filter(query_limits)
     else:  # no limits
         return frame
