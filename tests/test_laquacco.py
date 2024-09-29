@@ -86,18 +86,12 @@ class TestLaquacco:
                 "band_1": 148.93715502870901,
                 "band_2": 191.50675353870187,
                 "band_3": 234.13767428007668,
-                "max": 255.0,
-                "mean": 127.630746875,
-                "min": 0.0,
             },
             "Channel 2": {
                 "band_0": 63.426024677173615,
                 "band_1": 148.50665778961385,
                 "band_2": 191.0556114464565,
                 "band_3": 234.02182591500952,
-                "max": 255.0,
-                "mean": 127.389440625,
-                "min": 0.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -130,18 +124,12 @@ class TestLaquacco:
                 "band_1": 175.53152024063166,
                 "band_2": 207.47546437482671,
                 "band_3": 239.528255955486,
-                "max": 255.0,
-                "mean": 159.49946312188382,
-                "min": 64.0,
             },
             "Channel 2": {
                 "band_0": 47.43199880166768,
                 "band_1": 111.49771141292113,
                 "band_2": 143.45990094056432,
                 "band_3": 176.00994735182084,
-                "max": 192.0,
-                "mean": 95.9103757753552,
-                "min": 0.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -173,18 +161,12 @@ class TestLaquacco:
                 "band_1": 138.9916962331094,
                 "band_2": 159.9481859367267,
                 "band_3": 181.47754360465117,
-                "max": 192.0,
-                "mean": 128.0307885584147,
-                "min": 64.0,
             },
             "Channel 2": {
                 "band_0": 47.43199880166768,
                 "band_1": 111.49771141292113,
                 "band_2": 143.45990094056432,
                 "band_3": 176.00994735182084,
-                "max": 192.0,
-                "mean": 95.9103757753552,
-                "min": 0.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -209,28 +191,24 @@ class TestLaquacco:
         # unlimited with None
         limits = None  # {}
         test_filter = laq.set_chan_interval(test_frame, limits)
-        stats = test_filter.select(query)
-        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
+        stats_results = laq.get_query_results(test_filter, query)
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
         # unlimited with dictionary
         limits = {"lower": None, "upper": None}
         test_filter = laq.set_chan_interval(test_frame, limits)
-        stats = test_filter.select(query)
-        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
+        stats_results = laq.get_query_results(test_filter, query)
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
         limits = {"upper": 192}
         test_filter = laq.set_chan_interval(test_frame, limits)
-        stats = test_filter.select(query)
-        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
+        stats_results = laq.get_query_results(test_filter, query)
         stats_expected = {"max": 192, "mean": 95.99974737395223, "min": 0}
         assert stats_results == stats_expected
         # lower and upper limit
         limits = {"lower": 64, "upper": 192}
         test_filter = laq.set_chan_interval(test_frame, limits)
-        stats = test_filter.select(query)
-        stats_results = {stat: stats.select(stat).item() for stat in stats.columns}
+        stats_results = laq.get_query_results(test_filter, query)
         stats_expected = {"max": 192, "mean": 127.89909212343498, "min": 64}
         assert stats_results == stats_expected
 
@@ -250,8 +228,5 @@ class TestLaquacco:
             "band_1": 148.46955978046915,
             "band_2": 190.95798953166783,
             "band_3": 233.92799564022798,
-            "max": 255,
-            "mean": 127.37548065185547,
-            "min": 0,
         }
         assert chan_stats_results == chan_stats_expected

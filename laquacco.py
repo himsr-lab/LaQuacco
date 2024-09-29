@@ -153,7 +153,7 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
        statistics, the function will return the max, mean, and min values of
        the input pixels. By providing an additional function argument with
        previously determined (average) statistics, the function returns new
-       statistics that depend on the averages.
+       statistics, C-Band averages, that depend on the averages.
 
     Keyword arguments:
     pixls -- two-dimensional NumPy array with channel pixels
@@ -162,9 +162,9 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     """
     result = {}
     # create Polars DataFrame
-    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # fast
-    # set filter on dataframe
-    frame = set_chan_interval(frame, chan_limits)
+    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col")  # copy
+    # set filter on lazy dataframe
+    interval = set_chan_interval(frame, chan_limits)  # in-place or copy
     # prepare computation of statistics
     cbands = chan_means and all(
         [
@@ -173,35 +173,30 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
         ]
     )
     row = pl.col("pixls")
-    # get individual channel stats
-    query_stats = [
-        row.max().alias("max"),
-        row.mean().alias("mean"),
-        row.min().alias("min"),
-    ]
-    if cbands:
-        # get group channel stats
-        signal_range = chan_means["max"] - chan_means["mean"]
-        signal_limit_0 = chan_means["mean"]
-        signal_limit_1 = chan_means["mean"] + (1.0 / 3.0) * signal_range
-        signal_limit_2 = chan_means["mean"] + (2.0 / 3.0) * signal_range
-        query_cbands = [
-            # band_0: [−∞, signal_limit_0[
-            row.filter(row < signal_limit_0).mean().alias("band_0"),
-            # band_1: [signal_limit_0, signal_limit_1[
-            row.filter((row >= signal_limit_0) & (row < signal_limit_1))
-            .mean()
-            .alias("band_1"),
-            # band_2: [signal_limit_1, signal_limit_2[
-            row.filter((row >= signal_limit_1) & (row < signal_limit_2))
-            .mean()
-            .alias("band_2"),
-            # band_3: [signal_limit_2, +∞]
-            row.filter(row >= signal_limit_2).mean().alias("band_3"),
+    if not cbands:
+        # get initial channel stats
+        query = [
+            row.max().alias("max"),
+            row.mean().alias("mean"),
+            row.min().alias("min"),
         ]
-        query_stats.extend(query_cbands)
-    stats = frame.select(query_stats)  # execute computation request
-    result = {stat: stats.select(stat).item() for stat in stats.columns}
+    else:
+        # get group channel stats
+        sign_range = chan_means["max"] - chan_means["mean"]
+        sign_lim_0 = chan_means["mean"]
+        sign_lim_1 = chan_means["mean"] + (1.0 / 3.0) * sign_range
+        sign_lim_2 = chan_means["mean"] + (2.0 / 3.0) * sign_range
+        query = [
+            # band_0: [−∞, sign_lim_0[
+            row.filter(row < sign_lim_0).mean().alias("band_0"),
+            # band_1: [sign_lim_0, sign_lim_1[
+            row.filter((row >= sign_lim_0) & (row < sign_lim_1)).mean().alias("band_1"),
+            # band_2: [sign_lim_1, sign_lim_2[
+            row.filter((row >= sign_lim_1) & (row < sign_lim_2)).mean().alias("band_2"),
+            # band_3: [sign_lim_2, +∞]
+            row.filter(row >= sign_lim_2).mean().alias("band_3"),
+        ]
+    result = get_query_results(interval, query)
     return result
 
 
@@ -370,18 +365,16 @@ def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     return img_chans_stats
 
 
-def get_query_results(chan_pixls, query):
-    """Using Polars' aggregation function to lazily evaluate the results
-       of the (aggregation) functions used. Since we're using a lazy
-       dataframe, we have to collect the results to force evaluation.
+def get_query_results(frame, query):
+    """Using Polars' aggregation functions to evaluate the results
+       with a vectorized (one-pass) approach. Reasonably fast.
 
     Keyword arguments:
-    chan_pixls -- Polars lazy dataframe with channel pixels
+    frame -- Polars dataframe with channel pixels
     query -- list with aggregation functions
     """
-    queue = chan_pixls.select(query)  # queue computation request
-    stats = queue.collect()  # execute computation request
-    results = {stat: value[0] for stat, value in stats.to_dict(as_series=False).items()}
+    stats = frame.select(query)  # execute computation request
+    results = {stat: stats.select(stat).item() for stat in stats.columns}
     return results
 
 
@@ -448,7 +441,7 @@ def set_chan_interval(frame, limits={"lower": None, "upper": None}):
        The limits are closed interval endpoints.
 
     Keyword arguments:
-    frame -- Polars lazy dataframe with channel pixels
+    frame -- Polars dataframe with channel pixels
     limits -- dictionary with "lower" and "upper" interval limits
     """
     row = pl.col("pixls")
