@@ -166,52 +166,43 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     # set filter on lazy dataframe
     interval = set_chan_interval(frame, chan_limits)
     # prepare computation of statistics
-    if (
-        chan_means
-        and ("max" in chan_means and chan_means["max"] is not None)
-        and ("mean" in chan_means and chan_means["mean"] is not None)
-        and ("min" in chan_means and chan_means["min"] is not None)
-    ):
-        # get additional channel stats
+    cbands = chan_means and all(
+        [
+            stat in chan_means and chan_means[stat] is not None
+            for stat in ["max", "mean", "min"]
+        ]
+    )
+    row = pl.col("pixls")
+    # get individual channel stats
+    query_stats = [
+        row.max().alias("max"),
+        row.mean().alias("mean"),
+        row.min().alias("min"),
+    ]
+    if cbands:
+        # get group channel stats
         signal_range = chan_means["max"] - chan_means["mean"]
         signal_limit_0 = chan_means["mean"]
         signal_limit_1 = chan_means["mean"] + (1.0 / 3.0) * signal_range
         signal_limit_2 = chan_means["mean"] + (2.0 / 3.0) * signal_range
-
-        query = [
+        query_cbands = [
             # band_0: [−∞, signal_limit_0[
-            pl.when(pl.col("pixls") < signal_limit_0)
-            .then(pl.col("pixls"))
-            .mean()
-            .alias("band_0"),
+            pl.when(row < signal_limit_0).then(row).mean().alias("band_0"),
             # band_1: [signal_limit_0, signal_limit_1[
-            pl.when(
-                (pl.col("pixls") >= signal_limit_0) & (pl.col("pixls") < signal_limit_1)
-            )
-            .then(pl.col("pixls"))
+            pl.when((row >= signal_limit_0) & (row < signal_limit_1))
+            .then(row)
             .mean()
             .alias("band_1"),
             # band_2: [signal_limit_1, signal_limit_2[
-            pl.when(
-                (pl.col("pixls") >= signal_limit_1) & (pl.col("pixls") < signal_limit_2)
-            )
-            .then(pl.col("pixls"))
+            pl.when((row >= signal_limit_1) & (row < signal_limit_2))
+            .then(row)
             .mean()
             .alias("band_2"),
             # band_3: [signal_limit_2, +∞]
-            pl.when(pl.col("pixls") >= signal_limit_2)
-            .then(pl.col("pixls"))
-            .mean()
-            .alias("band_3"),
+            pl.when(row >= signal_limit_2).then(row).mean().alias("band_3"),
         ]
-    else:
-        # get initial channel stats
-        query = [
-            pl.col("pixls").max().alias("max"),
-            pl.col("pixls").mean().alias("mean"),
-            pl.col("pixls").min().alias("min"),
-        ]
-    result = get_query_results(interval, query)
+        query_stats.extend(query_cbands)
+    result = get_query_results(interval, query_stats)
     return result
 
 
@@ -453,26 +444,25 @@ def get_xml_meta(tiff, page=0):
     return xml_metadata
 
 
-def set_chan_interval(pixls, limits={"lower": None, "upper": None}):
+def set_chan_interval(frame, limits={"lower": None, "upper": None}):
     """Filter the channel values for a user-specified interval.
        The limits are closed interval endpoints.
 
     Keyword arguments:
-    pixls -- Polars lazy dataframe with channel pixels
+    frame -- Polars lazy dataframe with channel pixels
     limits -- dictionary with "lower" and "upper" interval limits
     """
-    pixl_col = pl.col("pixls")
-    if limits and (
-        ("lower" in limits and limits["lower"] is not None)
-        or ("upper" in limits and limits["upper"] is not None)
+    row = pl.col("pixls")
+    if limits and any(
+        [lim in limits and limits[lim] is not None for lim in ["lower", "upper"]]
     ):
         interval_limits = pl.lit(True)  # True literal to start
         if limits.get("lower"):
-            lower_condition = pixl_col >= limits["lower"]
+            lower_condition = row >= limits["lower"]
             interval_limits = interval_limits & lower_condition
         if limits.get("upper"):
-            upper_condition = pixl_col <= limits["upper"]
+            upper_condition = row <= limits["upper"]
             interval_limits = interval_limits & upper_condition
-        return pixls.filter(interval_limits)
+        return frame.filter(interval_limits)
     else:  # no limits
-        return pixls
+        return frame
