@@ -103,7 +103,7 @@ class TestLaquacco:
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
-        # limited interval
+        # specific limits
         chans_limits = {
             "Channel 1": {"lower": 64, "upper": None},
             "Channel 2": {"lower": None, "upper": 192},
@@ -149,6 +149,51 @@ class TestLaquacco:
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
+        # general limits
+        chans_limits = {
+            "*": {"lower": 64, "upper": 192},
+            "Channel 2": {"lower": None, "upper": 192},
+        }
+        img_chans_stats_results = laq.get_img_chans_stats(image, chans_limits)
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "max": 192.0,
+                "mean": 128.0307885584147,
+                "min": 64.0,
+            },
+            "Channel 2": {
+                "max": 192.0,
+                "mean": 95.9103757753552,
+                "min": 0.0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        img_chans_stats_bands = laq.get_img_chans_stats(
+            image, chans_limits, img_chans_stats_expected
+        )
+        for chan in image["channels"]:
+            img_chans_stats_results[chan].update(img_chans_stats_bands[chan])
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "band_0": 96.05701986347704,
+                "band_1": 138.9916962331094,
+                "band_2": 159.9481859367267,
+                "band_3": 181.47754360465117,
+                "max": 192.0,
+                "mean": 128.0307885584147,
+                "min": 64.0,
+            },
+            "Channel 2": {
+                "band_0": 47.43199880166768,
+                "band_1": 111.49771141292113,
+                "band_2": 143.45990094056432,
+                "band_3": 176.00994735182084,
+                "max": 192.0,
+                "mean": 95.9103757753552,
+                "min": 0.0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
         image["tiff"].close()
 
     def test_get_time_left(self):
@@ -181,17 +226,17 @@ class TestLaquacco:
             pl.col("pixls").mean().alias("mean"),
             pl.col("pixls").min().alias("min"),
         ]
-        # unlimited
-        limits = {"lower": None, "upper": None}
+        # unlimited with None
+        limits = None  # {}
         pixls = laq.set_chan_interval(test_frame, limits)
         stats_results = laq.get_query_results(pixls, query)
         stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
-        # lower limit
-        limits = {"lower": 64}
+        # unlimited with dictionary
+        limits = {"lower": None, "upper": None}
         pixls = laq.set_chan_interval(test_frame, limits)
         stats_results = laq.get_query_results(pixls, query)
-        stats_expected = {"max": 255, "mean": 159.2938392720988, "min": 64}
+        stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
         assert stats_results == stats_expected
         # upper limit
         limits = {"upper": 192}

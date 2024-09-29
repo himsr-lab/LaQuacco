@@ -160,6 +160,7 @@ def get_chan_stats(chan_pixls, imgs_chan_stats=None):
     img_chan_stats -- channel statistics across images ("max", "mean", "min")
     """
     result = {}
+    pixls_col = pl.col("pixls")
     if (
         imgs_chan_stats
         and ("max" in imgs_chan_stats and imgs_chan_stats["max"] is not None)
@@ -172,40 +173,32 @@ def get_chan_stats(chan_pixls, imgs_chan_stats=None):
         signal_limit_1 = imgs_chan_stats["mean"] + (1.0 / 3.0) * signal_range
         signal_limit_2 = imgs_chan_stats["mean"] + (2.0 / 3.0) * signal_range
 
-        stats = [
+        query = [
             # band_0: [−∞,signal_limit_0[
-            pl.col("pixls")
-            .filter(pl.col("pixls") < signal_limit_0)
-            .mean()
-            .alias("band_0"),
+            pixls_col.filter(pixls_col < signal_limit_0).mean().alias("band_0"),
             # band_1: [signal_limit_0,signal_limit_1[
-            pl.col("pixls")
-            .filter(
-                (pl.col("pixls") >= signal_limit_0) & (pl.col("pixls") < signal_limit_1)
+            pixls_col.filter(
+                (pixls_col >= signal_limit_0) & (pixls_col < signal_limit_1)
             )
             .mean()
             .alias("band_1"),
             # band_2: [signal_limit_1,signal_limit_2[
-            pl.col("pixls")
-            .filter(
-                (pl.col("pixls") >= signal_limit_1) & (pl.col("pixls") < signal_limit_2)
+            pixls_col.filter(
+                (pixls_col >= signal_limit_1) & (pixls_col < signal_limit_2)
             )
             .mean()
             .alias("band_2"),
             # band_3: [signal_limit_2,+∞]
-            pl.col("pixls")
-            .filter((pl.col("pixls") >= signal_limit_2))
-            .mean()
-            .alias("band_3"),
+            pixls_col.filter((pixls_col >= signal_limit_2)).mean().alias("band_3"),
         ]
     else:
         # get initial channel stats
-        stats = [
-            pl.col("pixls").max().alias("max"),
-            pl.col("pixls").mean().alias("mean"),
-            pl.col("pixls").min().alias("min"),
+        query = [
+            pixls_col.max().alias("max"),
+            pixls_col.mean().alias("mean"),
+            pixls_col.min().alias("min"),
         ]
-    result = get_query_results(chan_pixls, stats)
+    result = get_query_results(chan_pixls, query)
     return result
 
 
@@ -361,12 +354,14 @@ def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     shape = image["tiff"].pages[0].shape
     alloc = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))
     for page, chan in zip(image["tiff"].pages, image["channels"]):
-        # create and filter lazy Polars DataFrame
+        # prepare limits for channel
+        chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
+        # create and filter Polars DataFrame
         pixls = set_chan_interval(
             pl.DataFrame(
                 page.aspage().asarray(out=alloc).ravel(), schema=["pixls"], orient="col"
             ).lazy(),
-            chans_limits.get(chan),
+            limits=chan_limits,
         )
         # calculate channel statistics from pixel data
         if chan in chans_means and chans_means[chan] is not None:
@@ -385,11 +380,9 @@ def get_query_results(chan_pixls, query):
     chan_pixls -- Polars lazy dataframe with channel pixels
     query -- list with aggregation functions
     """
-    query = chan_pixls.select(query)  # queue computation request
-    results = {
-        stats: value[0]
-        for stats, value in query.collect().to_dict(as_series=False).items()
-    }  # execute computation request
+    queue = chan_pixls.select(query)  # queue computation request
+    stats = queue.collect()  # execute computation request
+    results = {stat: value[0] for stat, value in stats.to_dict(as_series=False).items()}
     return results
 
 
@@ -459,13 +452,17 @@ def set_chan_interval(pixls, limits={"lower": None, "upper": None}):
     pixls -- Polars lazy dataframe with channel pixels
     limits -- dictionary with "lower" and "upper" interval limits
     """
-    if limits:
+    pixl_col = pl.col("pixls")
+    if limits and (
+        ("lower" in limits and limits["lower"] is not None)
+        or ("upper" in limits and limits["upper"] is not None)
+    ):
         interval_limits = pl.lit(True)  # True literal to start
-        if "lower" in limits and limits["lower"] is not None:
-            lower_condition = pl.col("pixls") >= limits["lower"]
+        if limits.get("lower"):
+            lower_condition = pixl_col >= limits["lower"]
             interval_limits = interval_limits & lower_condition
-        if "upper" in limits and limits["upper"] is not None:
-            upper_condition = pl.col("pixls") <= limits["upper"]
+        if limits.get("upper"):
+            upper_condition = pixl_col <= limits["upper"]
             interval_limits = interval_limits & upper_condition
         return pixls.filter(interval_limits)
     else:  # no limits
