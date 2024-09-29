@@ -148,57 +148,70 @@ def get_chans(tiff, xml_meta):
     return chans
 
 
-def get_chan_stats(chan_pixls, imgs_chan_stats=None):
+def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     """Get channel statistics depending on input. Without additional (group)
        statistics, the function will return the max, mean, and min values of
        the input pixels. By providing an additional function argument with
        previously determined (average) statistics, the function returns new
-       statistics that depend on the averages without repitition.
+       statistics that depend on the averages.
 
     Keyword arguments:
-    chan_pixls -- Polars lazy dataframe with channel pixels
-    img_chan_stats -- channel statistics across images ("max", "mean", "min")
+    pixls -- two-dimensional NumPy array with channel pixels
+    chan_limits -- channel's interval boundaries (lower and upper)
+    chan_means -- channel's statistics ("max", "mean", "min")
     """
     result = {}
-    pixls_col = pl.col("pixls")
+    # create lazy Polars DataFrame (shadowing NumPy array)
+    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col").lazy()  # fast
+    # set filter on lazy dataframe
+    interval = set_chan_interval(frame, chan_limits)
+    # prepare computation of statistics
     if (
-        imgs_chan_stats
-        and ("max" in imgs_chan_stats and imgs_chan_stats["max"] is not None)
-        and ("mean" in imgs_chan_stats and imgs_chan_stats["mean"] is not None)
-        and ("min" in imgs_chan_stats and imgs_chan_stats["min"] is not None)
+        chan_means
+        and ("max" in chan_means and chan_means["max"] is not None)
+        and ("mean" in chan_means and chan_means["mean"] is not None)
+        and ("min" in chan_means and chan_means["min"] is not None)
     ):
         # get additional channel stats
-        signal_range = imgs_chan_stats["max"] - imgs_chan_stats["mean"]
-        signal_limit_0 = imgs_chan_stats["mean"]
-        signal_limit_1 = imgs_chan_stats["mean"] + (1.0 / 3.0) * signal_range
-        signal_limit_2 = imgs_chan_stats["mean"] + (2.0 / 3.0) * signal_range
+        signal_range = chan_means["max"] - chan_means["mean"]
+        signal_limit_0 = chan_means["mean"]
+        signal_limit_1 = chan_means["mean"] + (1.0 / 3.0) * signal_range
+        signal_limit_2 = chan_means["mean"] + (2.0 / 3.0) * signal_range
 
         query = [
-            # band_0: [−∞,signal_limit_0[
-            pixls_col.filter(pixls_col < signal_limit_0).mean().alias("band_0"),
-            # band_1: [signal_limit_0,signal_limit_1[
-            pixls_col.filter(
-                (pixls_col >= signal_limit_0) & (pixls_col < signal_limit_1)
+            # band_0: [−∞, signal_limit_0[
+            pl.when(pl.col("pixls") < signal_limit_0)
+            .then(pl.col("pixls"))
+            .mean()
+            .alias("band_0"),
+            # band_1: [signal_limit_0, signal_limit_1[
+            pl.when(
+                (pl.col("pixls") >= signal_limit_0) & (pl.col("pixls") < signal_limit_1)
             )
+            .then(pl.col("pixls"))
             .mean()
             .alias("band_1"),
-            # band_2: [signal_limit_1,signal_limit_2[
-            pixls_col.filter(
-                (pixls_col >= signal_limit_1) & (pixls_col < signal_limit_2)
+            # band_2: [signal_limit_1, signal_limit_2[
+            pl.when(
+                (pl.col("pixls") >= signal_limit_1) & (pl.col("pixls") < signal_limit_2)
             )
+            .then(pl.col("pixls"))
             .mean()
             .alias("band_2"),
-            # band_3: [signal_limit_2,+∞]
-            pixls_col.filter((pixls_col >= signal_limit_2)).mean().alias("band_3"),
+            # band_3: [signal_limit_2, +∞]
+            pl.when(pl.col("pixls") >= signal_limit_2)
+            .then(pl.col("pixls"))
+            .mean()
+            .alias("band_3"),
         ]
     else:
         # get initial channel stats
         query = [
-            pixls_col.max().alias("max"),
-            pixls_col.mean().alias("mean"),
-            pixls_col.min().alias("min"),
+            pl.col("pixls").max().alias("max"),
+            pl.col("pixls").mean().alias("mean"),
+            pl.col("pixls").min().alias("min"),
         ]
-    result = get_query_results(chan_pixls, query)
+    result = get_query_results(interval, query)
     return result
 
 
@@ -352,22 +365,18 @@ def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     # pre-allocate memory for NumPy array
     axes = image["tiff"].pages[0].axes
     shape = image["tiff"].pages[0].shape
-    alloc = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))
+    pixls = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))  # pre-allocate
     for page, chan in zip(image["tiff"].pages, image["channels"]):
-        # prepare limits for channel
+        page.asarray(out=pixls)  # write in-place
+        # prepare specific or generic limits for channel
         chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
-        # create and filter Polars DataFrame
-        pixls = set_chan_interval(
-            pl.DataFrame(
-                page.aspage().asarray(out=alloc).ravel(), schema=["pixls"], orient="col"
-            ).lazy(),
-            limits=chan_limits,
-        )
         # calculate channel statistics from pixel data
         if chan in chans_means and chans_means[chan] is not None:
-            img_chans_stats[chan] = get_chan_stats(pixls, chans_means[chan])
+            img_chans_stats[chan] = get_chan_stats(
+                pixls, chan_limits, chans_means[chan]
+            )
         else:
-            img_chans_stats[chan] = get_chan_stats(pixls)
+            img_chans_stats[chan] = get_chan_stats(pixls, chan_limits)
     return img_chans_stats
 
 

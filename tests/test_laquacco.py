@@ -205,7 +205,7 @@ class TestLaquacco:
     def test_query_results(self):
         np.random.seed(42)
         test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.DataFrame(
+        test_frame = pl.from_numpy(
             test_array.ravel(), schema=["pixls"], orient="col"
         ).lazy()
         query = [
@@ -218,7 +218,7 @@ class TestLaquacco:
     def test_set_chan_interval(self):
         np.random.seed(42)
         test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.DataFrame(
+        test_frame = pl.from_numpy(
             test_array.ravel(), schema=["pixls"], orient="col"
         ).lazy()
         query = [
@@ -254,16 +254,13 @@ class TestLaquacco:
     def test_get_chan_stats(self):
         np.random.seed(42)
         test_array = np.random.randint(0, 256, size=512 * 512)
-        test_frame = pl.DataFrame(
-            test_array.ravel(), schema=["pixls"], orient="col"
-        ).lazy()
         # raw stats (based on channel values)
-        chan_stats = laq.get_chan_stats(test_frame)
+        chan_stats_results = laq.get_chan_stats(test_array)
         chan_stats_expected = {"max": 255, "mean": 127.37548065185547, "min": 0}
-        assert chan_stats == chan_stats_expected
+        assert chan_stats_results == chan_stats_expected
         # group stats (based on channel averages)
         chan_stats_results = laq.get_chan_stats(
-            test_frame, {"max": 255, "mean": 127.37548065185547, "min": 0}
+            test_array, chan_means={"max": 255, "mean": 127.37548065185547, "min": 0}
         )
         chan_stats_expected = {
             "band_0": 63.449992757545495,
