@@ -18,7 +18,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-09-28)
+Summary:    Laboratory Quality Control v2.0 (2024-09-29)
 DOI:        # TODO
 URL:        https://github.com/christianrickert/LaQuacco
 
