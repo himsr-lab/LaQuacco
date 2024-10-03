@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-09-30)
+Summary:    Laboratory Quality Control v2.0 (2024-10-03)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -181,12 +181,12 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
         ]
     else:
         # get group channel stats
-        sign_range = chan_means["max"] - chan_means["mean"]
-        sign_lim_0 = chan_means["mean"]
-        sign_lim_1 = chan_means["mean"] + (1.0 / 3.0) * sign_range
-        sign_lim_2 = chan_means["mean"] + (2.0 / 3.0) * sign_range
+        sign_range = chan_means["max"] - chan_means["min"]
+        sign_lim_0 = chan_means["min"] + (1.0 / 4.0) * sign_range
+        sign_lim_1 = chan_means["min"] + (2.0 / 4.0) * sign_range
+        sign_lim_2 = chan_means["min"] + (3.0 / 4.0) * sign_range
         query = [
-            # band_0: [−∞, sign_lim_0[
+            # band_0: [−∞,sign_lim_0[
             pl.when(row < sign_lim_0).then(row).mean().alias("band_0"),
             # band_1: [sign_lim_0, sign_lim_1[
             pl.when((row >= sign_lim_0) & (row < sign_lim_1))
