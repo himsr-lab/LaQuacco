@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-10-03)
+Summary:    Laboratory Quality Control v2.0 (2024-10-17)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -132,7 +132,9 @@ class TestLaquacco:
             "Channel 2": {"lower": None, "upper": 192},
             "Channel 3": {"lower": 64, "upper": 192},
         }
-        img_chans_stats_results = laq.get_img_chans_stats(image, chans_limits)
+        img_chans_stats_results = laq.get_img_chans_stats(
+            image, chans_limits=chans_limits
+        )
         img_chans_stats_expected = {
             "Channel 1": {
                 "max": 255.0,
@@ -147,7 +149,7 @@ class TestLaquacco:
         }
         assert img_chans_stats_results == img_chans_stats_expected
         img_chans_stats_results = laq.get_img_chans_stats(
-            image, chans_limits, img_chans_stats_expected
+            image, chans_limits=chans_limits, chans_means=img_chans_stats_expected
         )
         img_chans_stats_expected = {
             "Channel 1": {
@@ -169,7 +171,9 @@ class TestLaquacco:
             "*": {"lower": 64, "upper": 192},
             "Channel 2": {"lower": None, "upper": 192},
         }
-        img_chans_stats_results = laq.get_img_chans_stats(image, chans_limits)
+        img_chans_stats_results = laq.get_img_chans_stats(
+            image, chans_limits=chans_limits
+        )
         img_chans_stats_expected = {
             "Channel 1": {
                 "max": 192.0,
@@ -184,7 +188,7 @@ class TestLaquacco:
         }
         assert img_chans_stats_results == img_chans_stats_expected
         img_chans_stats_results = laq.get_img_chans_stats(
-            image, chans_limits, img_chans_stats_expected
+            image, chans_limits=chans_limits, chans_means=img_chans_stats_expected
         )
         img_chans_stats_expected = {
             "Channel 1": {
