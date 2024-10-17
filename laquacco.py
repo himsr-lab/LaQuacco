@@ -333,21 +333,31 @@ def get_img(file):
     channels = get_chans(tiff, xml_meta)
     datetimes = get_dates(tiff, xml_meta)
     exposures = get_expos(tiff, xml_meta, channels)
+    tags = [
+        {
+            tag.name: tag.value
+            for tag in tiff.series[0].pages[p].aspage().tags
+            if tag.name != "ImageDescription"  # xml_meta
+        }
+        for p in range(len(tiff.series[0].pages))
+    ]
     # return metadata and tiff object
     return {
         "channels": channels,  # channel labels
         "exposures": exposures,  # exposure times
         "datetimes": datetimes,  # acquisition timestamps
         "file": str(file),  # image file path
+        "tags": tags,  # tiff tags
         "tiff": tiff,  # tiff object
     }
 
 
-def get_img_chans_stats(image, chans_limits={}, chans_means={}):
+def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
     """Calculate basic statistics for the image channels.
 
     Keyword arguments:
     image -- TIFF metadata and tiff object
+    annos -- list of point tuples for rectangular annotations
     chans_limits -- channels' interval boundaries (lower and upper)
     chans_means  -- mean channels' statistics (min and max)
     """
@@ -355,9 +365,20 @@ def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     # pre-allocate memory for NumPy array
     axes = image["tiff"].series[0].pages[0].axes
     shape = image["tiff"].series[0].pages[0].shape
-    pixls = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))  # pre-allocate
+    x_size = shape[axes.index("X")]
+    y_size = shape[axes.index("Y")]
+    pixls = np.empty((y_size, x_size))
+    has_annos = isinstance(annos, np.ndarray) and bool(len(annos))
+    if has_annos:
+        mask = np.full((y_size, x_size), False, dtype=np.bool)
+        for anno in annos:
+            (x1, y1), (x2, y2) = anno
+            mask[y1 : y2 + 1, x1 : x2 + 1] = True
     for page, chan in zip(image["tiff"].series[0].pages, image["channels"]):
         page.asarray(out=pixls)  # write in-place
+        # mask pixels outside of rectangular annotations
+        if has_annos:
+            pixls = np.where(mask, pixls, 0.0)
         # prepare specific or generic limits for channel
         chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
         # calculate channel statistics from pixel data
