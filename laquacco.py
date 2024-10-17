@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-10-03)
+Summary:    Laboratory Quality Control v2.0 (2024-10-17)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -353,10 +353,10 @@ def get_img_chans_stats(image, chans_limits={}, chans_means={}):
     """
     img_chans_stats = {}
     # pre-allocate memory for NumPy array
-    axes = image["tiff"].pages[0].axes
-    shape = image["tiff"].pages[0].shape
+    axes = image["tiff"].series[0].pages[0].axes
+    shape = image["tiff"].series[0].pages[0].shape
     pixls = np.empty((shape[axes.index("Y")], shape[axes.index("X")]))  # pre-allocate
-    for page, chan in zip(image["tiff"].pages, image["channels"]):
+    for page, chan in zip(image["tiff"].series[0].pages, image["channels"]):
         page.asarray(out=pixls)  # write in-place
         # prepare specific or generic limits for channel
         chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
@@ -432,7 +432,7 @@ def get_xml_meta(tiff, page=0):
     page -- the series (IFDs) index
     """
     xml_metadata = None
-    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
+    img_dscr = tiff.series[0].pages[page].aspage().tags.get("ImageDescription", None)
     if img_dscr:  # TIFF comment contains data
         xml_match = re.search(xml_pattern, img_dscr.value)
         if xml_match:  # TIFF comment matches XML pattern
