@@ -39,7 +39,7 @@ def get_bounds(field):
     the current rectangular field.
 
     Keyword arguments:
-    field -- field data
+    field -- single `RectangleAnnotation` data
     """
     return field["Bounds"]
 
@@ -61,12 +61,23 @@ def get_coordinates(bounds, resolution, offsets):
 
 
 def get_fields(annos):
-    """Get the list of annotation fields from annotation data.
+    """Get the list of fields from a list of annotations
 
     Keyword arguments:
-    annos -- annotation data
+    annos -- list of `ROIAnnotation` data
     """
-    return annos["Fields"]["Fields-i"]
+    fields = [
+        field_i
+        for anno in annos
+        if anno.get("@subtype") == "ROIAnnotation"
+        for field_i in (
+            [anno["Fields"]["Fields-i"]]
+            if isinstance(anno["Fields"]["Fields-i"], dict)  # list only
+            else anno["Fields"]["Fields-i"]
+        )
+        if field_i.get("@subtype") == "RectangleAnnotation"
+    ]
+    return fields
 
 
 def get_histories(fields):
@@ -75,9 +86,14 @@ def get_histories(fields):
     the type of annotation for the current field element.
 
     Keyword arguments:
-    fields -- fields data
+    fields -- list of `RectangleAnnotation` data
     """
-    return fields["History"]["History-i"]
+    histos_i = fields["History"]["History-i"]
+    histos_i = [histos_i] if isinstance(histos_i, dict) else histos_i  # list only
+    histos = [
+        histo_i for histo_i in histos_i if histo_i.get("Type") == "FlaggedForAnalysis"
+    ]
+    return histos
 
 
 def get_offsets(tags):
@@ -108,25 +124,20 @@ def get_offsets(tags):
     return (xpos, ypos)
 
 
-def get_rectangles(annos, offsets, anno_type):
+def get_rectangles(annos, offsets):
     """Get a list of rectangular bounds annotations. We are only
     considering the rectangles of type `FlaggedForAnalysis`.
 
     Keyword arguments:
-    annos -- annotation data
+    annos -- list of `ROIAnnotation` data
     offsets  -- tuple of X and Y (stage) offsets in pixels
-    anno_type -- string with annotation type selected in Phenochart
     """
-    rectangles = []
     fields = get_fields(annos)
-    for field in fields:
-        histories = get_histories(field)
-        for history in histories:
-            if "Type" in history and history["Type"] == anno_type:
-                resolution = float(annos["Resolution"])  # µm / px
-                bounds = get_bounds(field)
-                coordinates = get_coordinates(bounds, resolution, offsets)
-                rectangles.append(coordinates)
+    rectangles = [
+        get_coordinates(get_bounds(field), float(field["Resolution"]), offsets)
+        for field in fields
+        for history in get_histories(field)
+    ]
     return np.array(rectangles)
 
 
@@ -143,12 +154,13 @@ def get_xml(file):
 
 
 def read_annotations(file):
-    """Get a list of annotations from a `_annotations.xml` file.
-
-    Keyword arguments:
-    file -- annotations file
-    """
-    with open(file, "r", encoding="utf-8") as annos:
-        xml_annos = xmltodict.parse(annos.read())
-        annos = xml_annos["AnnotationList"]["Annotations"]["Annotations-i"]
-        return annos
+    """Get a list of annotations from a `_annotations.xml` file."""
+    annos = []
+    with open(file, "r", encoding="utf-8") as xml:
+        xml_annos = xmltodict.parse(xml.read())
+        annos_i = xml_annos["AnnotationList"]["Annotations"]["Annotations-i"]
+        annos_i = [annos_i] if isinstance(annos_i, dict) else annos_i  # list only
+        annos = [
+            anno_i for anno_i in annos_i if anno_i.get("@subtype") == "ROIAnnotation"
+        ]
+    return annos
