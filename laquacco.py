@@ -359,7 +359,7 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
 
     Keyword arguments:
     image -- TIFF metadata and tiff object
-    annos -- list of point tuples for rectangular annotations
+    annos -- NumPy array with rectangular annotations (point tuples)
     chans_limits -- channels' interval boundaries (lower and upper)
     chans_means  -- mean channels' statistics (min and max)
     """
