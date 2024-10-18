@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-10-17)
+Summary:    Laboratory Quality Control v2.0 (2024-10-18)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -175,9 +175,9 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     if not cbands:
         # get initial channel stats
         query = [
-            row.max().alias("max"),
-            row.mean().alias("mean"),
-            row.min().alias("min"),
+            row.drop_nans().max().alias("max"),
+            row.drop_nans().mean().alias("mean"),
+            row.drop_nans().min().alias("min"),
         ]
     else:
         # get group channel stats
@@ -187,19 +187,21 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
         sign_lim_2 = chan_means["min"] + (3.0 / 4.0) * sign_range
         query = [
             # band_0: [−∞,sign_lim_0[
-            pl.when(row < sign_lim_0).then(row).mean().alias("band_0"),
+            pl.when(row < sign_lim_0).then(row).drop_nans().mean().alias("band_0"),
             # band_1: [sign_lim_0, sign_lim_1[
             pl.when((row >= sign_lim_0) & (row < sign_lim_1))
             .then(row)
+            .drop_nans()
             .mean()
             .alias("band_1"),
             # band_2: [sign_lim_1, sign_lim_2[
             pl.when((row >= sign_lim_1) & (row < sign_lim_2))
             .then(row)
+            .drop_nans()
             .mean()
             .alias("band_2"),
             # band_3: [sign_lim_2, +∞]
-            pl.when(row >= sign_lim_2).then(row).mean().alias("band_3"),
+            pl.when(row >= sign_lim_2).then(row).drop_nans().mean().alias("band_3"),
         ]
     result = get_query_results(interval, query)
     return result
@@ -378,7 +380,7 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
         page.asarray(out=pixls)  # write in-place
         # mask pixels outside of rectangular annotations
         if has_annos:
-            pixls = np.where(mask, pixls, 0.0)
+            pixls = np.where(mask, pixls, np.nan)
         # prepare specific or generic limits for channel
         chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
         # calculate channel statistics from pixel data
