@@ -126,6 +126,40 @@ class TestLaquacco:
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
+        # unlimited with masking
+        annos = np.array([((0, 0), (100, 100)), ((300, 700), (400, 800))])
+        img_chans_stats_results = laq.get_img_chans_stats(image, annos=annos)
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "max": 255.0,
+                "mean": 127.47418444631454,
+                "min": 0.0,
+            },
+            "Channel 2": {
+                "max": 255.0,
+                "mean": 127.07420424731448,
+                "min": 0.0,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
+        img_chans_stats_results = laq.get_img_chans_stats(
+            image, annos=annos, chans_means=img_chans_stats_expected
+        )
+        img_chans_stats_expected = {
+            "Channel 1": {
+                "band_0": 31.927992087042533,
+                "band_1": 95.57157057654075,
+                "band_2": 159.35067475063565,
+                "band_3": 223.51089346392163,
+            },
+            "Channel 2": {
+                "band_0": 31.44708209693373,
+                "band_1": 95.59882352941176,
+                "band_2": 159.98371910553158,
+                "band_3": 223.30436540016169,
+            },
+        }
+        assert img_chans_stats_results == img_chans_stats_expected
         # specific limits
         chans_limits = {
             "Channel 1": {"lower": 64, "upper": None},
