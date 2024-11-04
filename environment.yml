@@ -1,0 +1,15 @@
+name: laquacco
+channels:
+- conda-forge
+- defaults
+dependencies:
+- imagecodecs
+- jupyterlab
+- matplotlib
+- numpy
+- python
+- pip
+- xmltodict
+- pip:
+  - polars-u64-idx
+  - tifffile

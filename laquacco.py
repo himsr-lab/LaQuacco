@@ -1,11 +1,96 @@
+"""
+Copyright 2023 The Regents of the University of Colorado
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Author:     Christian Rickert <christian.rickert@cuanschutz.edu>
+Group:      Human Immune Monitoring Shared Resource (HIMSR)
+            University of Colorado, Anschutz Medical Campus
+
+Title:      LaQuacco
+Summary:    Laboratory Quality Control v1.0 (2024-03-08)
+DOI:        # TODO
+URL:        https://github.com/christianrickert/LaQuacco
+
+Description:
+
+# TODO
+"""
+
 import datetime
 import fnmatch
 import os
-import tifffile
+import platform
+import subprocess
+import tempfile
 import time
+import xml
 import xmltodict
-import numpy as np
+import numpy as np  # single-threaded function calls, multi-threaded BLAS backends
+
+# limit pool size for multi-threading
+try:  # macOS, Linux
+    available_cpu = str(len(os.sched_getaffinity(0)) // 2 or 1)
+except AttributeError:  # Windows
+    available_cpu = str(os.cpu_count() // 2 or 1)
+
+# set environmental variables before imports
+os.environ["TIFFFILE_NUM_THREADS"] = available_cpu  # for de/compressing segments
+os.environ["TIFFFILE_NUM_IOTHREADS"] = available_cpu  # for reading file sequences
+import tifffile
+
+os.environ["POLARS_MAX_THREADS"] = available_cpu  # used to initialize thread pool
 import polars as pl
+
+
+def copy_file(src_path="", dst_path=""):
+    """Use the operating systems' native commands to copy a (remote) source file
+        to a (temporary) destination file. If the destination directory does not exist,
+        this function will create a temporary destination directiory first.
+        Python's built-in `shutil` file copy can't make use of the maximum transfer speeds
+        required for network connections, so we're using system-native commands instead.
+
+    Keyword arguments:
+    src_file  -- (remote) source file path
+    dst_file  -- (temporary) destination file path
+    """
+    src_path = os.path.abspath(src_path)
+    src_dir, src_file = os.path.split(src_path)
+    dst_path = (
+        os.path.abspath(dst_path)
+        if dst_path
+        else os.path.join(tempfile.mkdtemp(), src_file)
+    )
+    dst_dir, dst_file = os.path.split(dst_path)
+    command = {
+        "Darwin": ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Linux": ["cp", src_path, os.path.join(dst_dir, src_file)],
+        "Windows": [
+            "ROBOCOPY",
+            src_dir,
+            dst_dir,
+            src_file,
+            "/COMPRESS",
+            "/NJH",
+            "/NJS",
+            "/NP",
+        ],
+    }.get(platform.system())
+    try:
+        subprocess.run(command, check=platform.system() != "Windows")
+    except subprocess.CalledProcessError as err:
+        print(f"Failed to copy file. Error was:\n{err}")
+    return os.path.abspath(os.path.join(dst_dir, src_file))
 
 
 def get_chan(page):
@@ -14,20 +99,22 @@ def get_chan(page):
     Keyword arguments:
     page -- the TIFF page
     """
-    try:
-        chan = page.tags["PageName"].value  # regular TIFF
-    except KeyError:
-        img_descr = page.tags["ImageDescription"].value  # OME-TIFF
-        img_dict = xmltodict.parse(img_descr)
-        vendor_id = next(iter(img_dict))  # only key
+    chan = None
+    img_descr = page.tags["ImageDescription"].value  # OME-TIFF (XML) or MIBITIFF (JSON)
+    if img_descr:
         try:
+            img_dict = xmltodict.parse(img_descr)
+            vendor_id = next(iter(img_dict))  # only key
             chan = img_dict[vendor_id]["Name"]
-        except KeyError:
-            chan = None
+            marker = img_dict[vendor_id].get("Biomarker", None)  # might be missing
+            if marker:
+                chan = f"{marker} ({chan})"
+        except xml.parsers.expat.ExpatError:  # invalid XML
+            chan = page.tags["PageName"].value  # regular TIFF
     return chan
 
 
-def get_chan_data(imgs_chans_data, chan, data):
+def get_chan_data(imgs_chans_data, chan, data, length=1):
     """Returns channel data from image data dictionaries.
     Works across all images to retrieve the channel data.
 
@@ -35,33 +122,19 @@ def get_chan_data(imgs_chans_data, chan, data):
     imgs_chans_data -- dictionaries with image data
     chan -- the key determining the channel value
     data -- the key determining the channel data
+    length -- length of the data tuple
     """
     chan_data = []
+    empty = tuple(None for n in range(0, length)) if length > 1 else None
     for _img, chans_data in imgs_chans_data.items():
         if chan in chans_data and chan not in ["metadata"]:
             chan_data.append(chans_data[chan][data])
         else:  # channel missing in image
-            chan_data.append(None)
+            chan_data.append(empty)
     # convert to Numpy array, keep Python datatype
     chan_data = np.array(chan_data, dtype="float")
     chan_data[chan_data is None] = np.nan
     return chan_data
-
-
-def get_chan_img(tiff, channel):
-    """Get the channel image from a TIFF dictionary.
-
-    Keyword arguments:
-    tiff -- TIFF dictionary
-    channel -- channel name
-    """
-    pixls = np.zeros((tiff["shape"][1:]))  # pre-allocate
-    for page in tiff["pages"]:
-        chan = get_chan(page)
-        if chan == channel:
-            page.asarray(out=pixls)  # in-place
-    tiff["tiff"].close()
-    return pixls
 
 
 def get_files(path="", pat=None, anti=None, recurse=False):
@@ -110,23 +183,6 @@ def get_img_data(imgs_chans_data, img, data):
     return img_data
 
 
-def get_run_slice(array, index, slice_margin):
-    """Returns the slice of an array centered at the index
-     with a margin of elements included before and after.
-
-    Keyword arguments:
-    array -- Numpy array
-    index  -- center position of the slice
-    margin  -- element count before and after index
-    """
-    slice = np.empty(0)
-    if array.size > 0:
-        slice = array[
-            max(0, index - slice_margin) : min(index + slice_margin + 1, array.size)
-        ]
-    return slice
-
-
 def get_stats(array, chan_stats=(None, None, None)):
     """Calculates basic statistics for a 1-dimensional array: Polars' parallel Rust
     implementation is significantly faster - especially for large Numpy arrays.
@@ -138,72 +194,61 @@ def get_stats(array, chan_stats=(None, None, None)):
     chan_mean = chan_stats[0]
     chan_min = chan_stats[1]
     chan_max = chan_stats[2]
-    bands = chan_mean and chan_max
+    get_bands = chan_mean and chan_min and chan_max
     arrow = pl.from_numpy(array.ravel(), schema=["pixls"], orient="col")  # fast
-    total = len(arrow)
-    pixls = arrow.filter(pl.col('pixls') > chan_min)  # exclude background
-    size = len(pixls)
-    perc = size/total
-    mean = None
-    stdev = None
-    stderr = None
-    minimum = None
-    maximum = None
-    #score = None
-    band_0 = None
-    band_1 = None
-    band_2 = None
-    band_3 = None
+    if get_bands:
+        pixls = arrow.filter(
+            pl.col("pixls") >= chan_min
+        )  # exclude below-threshold regions
+    else:
+        pixls = arrow.filter(pl.col("pixls") > chan_min)  # exclude non-signal regions
+    total, size = len(arrow), len(pixls)
+    mean, minimum, maximum = None, None, None
+    band_0, band_1, band_2, band_3 = None, None, None, None
     if size:
-        calcs = [pl.col("pixls").mean().alias("mean"),
-                 pl.col("pixls").std().alias("stdev"),
-                 pl.col("pixls").min().alias("min"),
-                 pl.col("pixls").max().alias("max")]
-        if bands:
+        # prepare vectors calculations
+        stats = [
+            pl.col("pixls").mean().alias("mean"),
+            pl.col("pixls").min().alias("min"),
+            pl.col("pixls").max().alias("max"),
+        ]
+        if get_bands:
+            # [0---band_0---(mean)---band_1---|---band_2---|---band_3---(max)]
             bands_range = chan_max - chan_mean
-            lim_1 = chan_mean + 1.0/3.0 * bands_range
-            lim_2 = chan_mean + 2.0/3.0 * bands_range
-            calcs.extend(
-                [pl.col("pixls").filter(
-                    (pl.col("pixls") < chan_mean))
-                        .mean().alias("band_0"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
-                        .mean().alias("band_1"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
-                        .mean().alias("band_2"),
-                 pl.col("pixls").filter(
-                     (pl.col("pixls") >= lim_2))
-                        .mean().alias("band_3")])
-            """
-            [pl.when((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))\
-               .then(1).otherwise(0).sum().alias("band_1"),
-             pl.when((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))\
-               .then(1).otherwise(0).sum().alias("band_2"),
-             pl.when(pl.col("pixls") >= lim_2)\
-               .then(1).otherwise(0).sum().alias("band_3")])
-            """
-        result = pixls.select(calcs)  # iterate over pixels only once
+            lim_1 = chan_mean + 1.0 / 3.0 * bands_range
+            lim_2 = chan_mean + 2.0 / 3.0 * bands_range
+            stats.extend(
+                [
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") < chan_mean))
+                    .mean()
+                    .alias("band_0"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= chan_mean) & (pl.col("pixls") < lim_1))
+                    .mean()
+                    .alias("band_1"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= lim_1) & (pl.col("pixls") < lim_2))
+                    .mean()
+                    .alias("band_2"),
+                    pl.col("pixls")
+                    .filter((pl.col("pixls") >= lim_2))
+                    .mean()
+                    .alias("band_3"),
+                ]
+            )
+        # apply vector calculations
+        result = pixls.select(stats)  # iterate over pixels only once
+        # retrieve vector calculations
         mean = result.select("mean").item()
-        stdev = result.select("stdev").item()
-        stderr = np.sqrt(np.power(result.select("stdev").item(), 2.0) / size)
         minimum = result.select("min").item()
         maximum = result.select("max").item()
-        if bands:
+        if get_bands:
             band_0 = result.select("band_0").item()
             band_1 = result.select("band_1").item()
             band_2 = result.select("band_2").item()
             band_3 = result.select("band_3").item()
-            """
-            score = 100.0 / size *\
-                     (1.0 * result.select("band_1").item() +\
-                      2.0 * result.select("band_2").item() +\
-                      3.0 * result.select("band_3").item())
-            """
-    return (total, size, perc, mean, stdev, stderr,
-           (minimum, maximum),
-           (band_0, band_1, band_2, band_3))
+    return (total, size, mean, (minimum, maximum), (band_0, band_1, band_2, band_3))
 
 
 def get_tiff(image):
@@ -310,10 +355,7 @@ def stats_img_data(tiff, chans_stats=None):
         (
             img_chans_data[chan]["total"],
             img_chans_data[chan]["size"],
-            img_chans_data[chan]["perc"],
             img_chans_data[chan]["mean"],
-            img_chans_data[chan]["stdev"],
-            img_chans_data[chan]["stderr"],
             img_chans_data[chan]["minmax"],
             img_chans_data[chan]["bands"],
         ) = get_stats(pixls, chans_stats[chan])
