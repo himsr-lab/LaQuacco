@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-10-18)
+Summary:    Laboratory Quality Control v2.0 (2024-11-05)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -38,6 +38,12 @@ def get_bounds(field):
     """Get the top-left and bottom-right coordinates (in microns) of
     the current rectangular field.
 
+    * Annotations @ROIAnnotation
+      * Fields @RectangleAnnotation
+        * Histories @FlaggedForAnalysis
+        * Bounds (coordinates)
+          * ...
+
     Keyword arguments:
     field -- single `RectangleAnnotation` data
     """
@@ -47,6 +53,15 @@ def get_bounds(field):
 def get_coordinates(bounds, resolution, offsets):
     """Get the top-left and bottom-right coordinates (in pixels) of
     the current rectangular's bounds as a tuple of tuples.
+
+    * Annotations @ROIAnnotation
+      * Fields @RectangleAnnotation
+        * Histories @FlaggedForAnalysis
+        * Bounds (Rectangle)
+          * Origin
+            * X, Y
+          * Size
+            * Width, Height
 
     Keyword arguments:
     bounds -- rectangular's bounds in micrometers
@@ -63,36 +78,47 @@ def get_coordinates(bounds, resolution, offsets):
 def get_fields(annos):
     """Get the list of fields from a list of annotations
 
+
+    * Annotations @ROIAnnotation
+      * Fields @RectangleAnnotation
+        * Histories @FlaggedForAnalysis
+        * ...
+
     Keyword arguments:
     annos -- list of `ROIAnnotation` data
     """
     fields = [
         field_i
         for anno in annos
-        if anno.get("@subtype") == "ROIAnnotation"
+        if anno.get("Fields") is not None  # missing if deleted
+        and anno.get("@subtype") == "ROIAnnotation"
         for field_i in (
             [anno["Fields"]["Fields-i"]]
             if isinstance(anno["Fields"]["Fields-i"], dict)  # list only
             else anno["Fields"]["Fields-i"]
         )
         if field_i.get("@subtype") == "RectangleAnnotation"
+        and get_histories(field_i)[-1].get("Type") == "FlaggedForAnalysis"  # current
     ]
     return fields
 
 
-def get_histories(fields):
-    """Get the list histories from fields data.
+def get_histories(field):
+    """Get the list histories from field data.
     The history section contains information about the author and
-    the type of annotation for the current field element.
+    the last type of annotation for the current field element.
+
+    * Annotations @ROIAnnotation
+      * Fields @RectangleAnnotation
+        * Histories @FlaggedForAnalysis (last)
+          * ...
 
     Keyword arguments:
-    fields -- list of `RectangleAnnotation` data
+    field -- single `RectangleAnnotation` data
     """
-    histos_i = fields["History"]["History-i"]
+    histos_i = field["History"]["History-i"]
     histos_i = [histos_i] if isinstance(histos_i, dict) else histos_i  # list only
-    histos = [
-        histo_i for histo_i in histos_i if histo_i.get("Type") == "FlaggedForAnalysis"
-    ]
+    histos = [histo_i for histo_i in histos_i]
     return histos
 
 
@@ -124,19 +150,23 @@ def get_offsets(tags):
     return (xpos, ypos)
 
 
-def get_rectangles(annos, offsets):
+def get_rectangles(file, offsets):
     """Get a list of rectangular bounds annotations. We are only
     considering the rectangles of type `FlaggedForAnalysis`.
 
+    * Annotations @ROIAnnotation
+      * Fields @RectangleAnnotation
+        * Histories @FlaggedForAnalysis
+          * Bounds (coordinates)
+
     Keyword arguments:
-    annos -- list of `ROIAnnotation` data
-    offsets  -- tuple of X and Y (stage) offsets in pixels
+    file -- annotation XML file
+    offsets -- tuple of X and Y (stage) offsets in pixels
     """
-    fields = get_fields(annos)
+    annos = read_annotations(file)
     rectangles = [
         get_coordinates(get_bounds(field), float(field["Resolution"]), offsets)
-        for field in fields
-        for history in get_histories(field)
+        for field in get_fields(annos)
     ]
     return np.array(rectangles)
 
@@ -154,7 +184,15 @@ def get_xml(file):
 
 
 def read_annotations(file):
-    """Get a list of annotations from a `_annotations.xml` file."""
+    """Get a list of annotations from a `_annotations.xml` file.
+
+    * Annotations @ROIAnnotation
+      * ...
+
+    Keywords:
+    file -- annotation XML file path
+
+    """
     annos = []
     with open(file, "r", encoding="utf-8") as xml:
         xml_annos = xmltodict.parse(xml.read())
