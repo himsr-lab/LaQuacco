@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-10-18)
+Summary:    Laboratory Quality Control v2.0 (2024-11-14)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -117,12 +117,18 @@ class TestLaquacco:
                 "band_1": 95.56676157650232,
                 "band_2": 159.4273558578761,
                 "band_3": 223.61814747166412,
+                "lim_0": 63.75,
+                "lim_1": 127.5,
+                "lim_2": 191.25,
             },
             "Channel 2": {
                 "band_0": 31.487712218028722,
                 "band_1": 95.53149690102047,
                 "band_2": 159.4692337533945,
                 "band_3": 223.45975257370876,
+                "lim_0": 63.75,
+                "lim_1": 127.5,
+                "lim_2": 191.25,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -151,12 +157,18 @@ class TestLaquacco:
                 "band_1": 95.57157057654075,
                 "band_2": 159.35067475063565,
                 "band_3": 223.51089346392163,
+                "lim_0": 63.75,
+                "lim_1": 127.5,
+                "lim_2": 191.25,
             },
             "Channel 2": {
                 "band_0": 31.44708209693373,
                 "band_1": 95.59882352941176,
                 "band_2": 159.98371910553158,
                 "band_3": 223.30436540016169,
+                "lim_0": 63.75,
+                "lim_1": 127.5,
+                "lim_2": 191.25,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -191,12 +203,18 @@ class TestLaquacco:
                 "band_1": 135.54264168416876,
                 "band_2": 183.52176530595182,
                 "band_3": 231.60101279317698,
+                "lim_0": 111.75,
+                "lim_1": 159.5,
+                "lim_2": 207.25,
             },
             "Channel 2": {
                 "band_0": 23.50682044473946,
                 "band_1": 71.49815547431852,
                 "band_2": 119.5339726620382,
                 "band_3": 168.0184582153786,
+                "lim_0": 48.0,
+                "lim_1": 96.0,
+                "lim_2": 144.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -230,12 +248,18 @@ class TestLaquacco:
                 "band_1": 111.54628130061045,
                 "band_2": 143.51385827161718,
                 "band_3": 176.02873325716507,
+                "lim_0": 96.0,
+                "lim_1": 128.0,
+                "lim_2": 160.0,
             },
             "Channel 2": {
                 "band_0": 23.50682044473946,
                 "band_1": 71.49815547431852,
                 "band_2": 119.5339726620382,
                 "band_3": 168.0184582153786,
+                "lim_0": 48.0,
+                "lim_1": 96.0,
+                "lim_2": 144.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -299,5 +323,8 @@ class TestLaquacco:
             "band_1": 95.35042657055523,
             "band_2": 159.48075548594107,
             "band_3": 223.58119422209955,
+            "lim_0": 63.75,
+            "lim_1": 127.5,
+            "lim_2": 191.25,
         }
         assert chan_stats_results == chan_stats_expected
