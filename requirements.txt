@@ -3,6 +3,7 @@ jupyterlab
 ipympl
 ipywidgets
 jupyterlab
+nbformat
 polars-u64-idx
 pytest
 tifffile[all]

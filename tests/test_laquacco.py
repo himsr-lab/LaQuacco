@@ -26,10 +26,12 @@ DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
 
+import nbformat
 import os
 import shutil
 import sys
 import time
+import warnings
 from datetime import datetime
 import numpy as np
 import polars as pl
@@ -328,3 +330,43 @@ class TestLaquacco:
             "lim_2": 191.25,
         }
         assert chan_stats_results == chan_stats_expected
+
+    def test_jupyer_output(self):
+        notebook_results = os.path.abspath("./Laquacco.ipynb")
+        notebook_expected = os.path.abspath("./tests/Laquacco_test.ipynb")
+
+        if os.path.exists(notebook_results) and os.path.exists(notebook_expected):
+
+            def read_notebook(file):
+                """Read output data from a Jupyter lab notebook.
+                Strip all run-time information and widget output that contains
+                inconsistenr hash values, binary output, and version numbers.
+
+                Keyword arguments:
+                file -- Jupyter lab notebook file
+                """
+                with open(file, "r", encoding="utf-8") as nb:
+                    nb_data = nbformat.read(nb, as_version=nbformat.NO_CONVERT)
+                    # remove non-text output (widgets output is not reproducible)
+                    outputs = []
+                    for cell in nb_data.cells:
+                        if cell.cell_type == "code" and "outputs" in cell:
+                            # Collect only text outputs
+                            for output in cell["outputs"]:
+                                if output.get("output_type") == "stream":
+                                    outputs.append(output.get("text", ""))
+                                elif output.get(
+                                    "output_type"
+                                ) == "execute_result" and "text/plain" in output.get(
+                                    "data", {}
+                                ):
+                                    outputs.append(output["data"]["text/plain"])
+                    return outputs
+
+            assert read_notebook(notebook_results) == read_notebook(notebook_expected)
+        else:
+            warnings.warn(
+                "Jupyter output not tested. - Run `Laquacco.ipynb` and save as `Laquacco_test.ipynb` "
+                "in the `tests` directory to include in the next test iteration!"
+            )
+            assert True
