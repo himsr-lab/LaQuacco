@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-11-14)
+Summary:    Laboratory Quality Control v2.0 (2024-11-18)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -121,7 +121,7 @@ def get_chans(tiff, xml_meta):
     xml_meta -- XML TIFF metadata
     """
     chans = []
-    pages = tiff.series[0].pages
+    pages = tiff.pages
     pages_len = len(pages)
     if xml_meta:
         try:  # OME-TIFF
@@ -219,7 +219,7 @@ def get_dates(tiff, xml_meta):
     """
     acq = None
     acqs = []
-    pages = tiff.series[0].pages
+    pages = tiff.pages
     pages_len = len(pages)
     if xml_meta:
         try:  # OME-TIFF
@@ -247,7 +247,7 @@ def get_expos(tiff, xml_meta, channels):
     xml_meta -- XML TIFF metadata
     channels  -- list of channels
     """
-    pages = tiff.series[0].pages
+    pages = tiff.pages
     pages_len = len(pages)
     expo_times = []
     if xml_meta:
@@ -341,10 +341,10 @@ def get_img(file):
     tags = [
         {
             tag.name: tag.value
-            for tag in tiff.series[0].pages[p].aspage().tags
+            for tag in tiff.pages[p].aspage().tags
             if tag.name != "ImageDescription"  # xml_meta
         }
-        for p in range(len(tiff.series[0].pages))
+        for p in range(len(tiff.pages))
     ]
     # return metadata and tiff object
     return {
@@ -368,8 +368,8 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
     """
     img_chans_stats = {}
     # pre-allocate memory for NumPy array
-    axes = image["tiff"].series[0].pages[0].axes
-    shape = image["tiff"].series[0].pages[0].shape
+    axes = image["tiff"].pages[0].axes
+    shape = image["tiff"].pages[0].shape
     x_size = shape[axes.index("X")]
     y_size = shape[axes.index("Y")]
     pixls = np.empty((y_size, x_size))
@@ -379,7 +379,9 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
         for anno in annos:
             (x1, y1), (x2, y2) = anno
             mask[y1 : y2 + 1, x1 : x2 + 1] = True
-    for page, chan in zip(image["tiff"].series[0].pages, image["channels"]):
+    for page, chan in zip(
+        image["tiff"].pages, image["channels"]
+    ):  # limited to first series by channels
         page.asarray(out=pixls)  # write in-place
         # mask pixels outside of rectangular annotations
         if has_annos:
@@ -458,7 +460,7 @@ def get_xml_meta(tiff, page=0):
     page -- the series (IFDs) index
     """
     xml_metadata = None
-    img_dscr = tiff.series[0].pages[page].aspage().tags.get("ImageDescription", None)
+    img_dscr = tiff.pages[page].aspage().tags.get("ImageDescription", None)
     if img_dscr:  # TIFF comment contains data
         xml_match = re.search(xml_pattern, img_dscr.value)
         if xml_match:  # TIFF comment matches XML pattern
