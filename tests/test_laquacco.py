@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.0 (2024-11-14)
+Summary:    Laboratory Quality Control v2.0 (2024-11-18)
 DOI:        # TODO
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -332,8 +332,8 @@ class TestLaquacco:
         assert chan_stats_results == chan_stats_expected
 
     def test_jupyer_output(self):
-        notebook_results = os.path.abspath("./Laquacco.ipynb")
-        notebook_expected = os.path.abspath("./tests/Laquacco_test.ipynb")
+        notebook_results = os.path.abspath("./Laquacco_results.ipynb")
+        notebook_expected = os.path.abspath("./tests/Laquacco_expected.ipynb")
 
         if os.path.exists(notebook_results) and os.path.exists(notebook_expected):
 
@@ -366,7 +366,7 @@ class TestLaquacco:
             assert read_notebook(notebook_results) == read_notebook(notebook_expected)
         else:
             warnings.warn(
-                "Jupyter output not tested. - Run `Laquacco.ipynb` and save as `Laquacco_test.ipynb` "
-                "in the `tests` directory to include in the next test iteration!"
+                "Jupyter output not tested. - Run `Laquacco.ipynb` and save as `Laquacco_results.ipynb` "
+                "to compare against `./tests/Laquacco_expected.ipynb` with the next test iteration!"
             )
             assert True
