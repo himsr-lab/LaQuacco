@@ -333,7 +333,7 @@ def get_img(file):
     file -- image file path
     """
     # open TIFF file and keep handle open for later use
-    tiff = tifffile.TiffFile(file)
+    tiff = tifffile.TiffFile(file)  # alternatively: open(path, 'rb')
     xml_meta = get_xml_meta(tiff)
     channels = get_chans(tiff, xml_meta)
     datetimes = get_dates(tiff, xml_meta)
