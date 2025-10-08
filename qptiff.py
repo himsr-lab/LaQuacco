@@ -22,7 +22,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
 
 Title:      LaQuacco
 Summary:    Laboratory Quality Control v2.0 (2024-11-05)
-DOI:        # TODO
+DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
 
