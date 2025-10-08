@@ -201,4 +201,3 @@ def read_annotations(file):
             anno_i for anno_i in annos_i if anno_i.get("@subtype") == "ROIAnnotation"
         ]
     return annos
-
