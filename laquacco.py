@@ -100,7 +100,6 @@ def copy_file(src_path="", dst_path=""):
             src_dir,
             dst_dir,
             src_file,
-            "/COMPRESS",
             "/NJH",
             "/NJS",
             "/NP",
@@ -161,7 +160,9 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     """
     result = {}
     # create Polars DataFrame
-    frame = pl.from_numpy(pixls.ravel(), schema=["pixls"], orient="col").lazy()  # copy
+    frame = pl.from_numpy(
+        pixls.ravel(), schema={"pixls": pl.Float32}, orient="col"
+    ).lazy()  # second data instance (copy)
     # set filter on lazy dataframe
     interval = set_chan_interval(frame, chan_limits)  # in-place or copy, lazy
     # prepare computation of statistics
@@ -372,7 +373,7 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
     shape = image["tiff"].pages[0].shape
     x_size = shape[axes.index("X")]
     y_size = shape[axes.index("Y")]
-    pixls = np.empty((y_size, x_size))
+    pixls = np.empty((y_size, x_size), dtype=np.float32)  # first data instance
     has_annos = isinstance(annos, np.ndarray) and bool(len(annos))
     if has_annos:
         mask = np.full((y_size, x_size), False, dtype=np.bool)
