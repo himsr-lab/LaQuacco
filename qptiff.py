@@ -78,7 +78,6 @@ def get_coordinates(bounds, resolution, offsets):
 def get_fields(annos):
     """Get the list of fields from a list of annotations
 
-
     * Annotations @ROIAnnotation
       * Fields @RectangleAnnotation
         * Histories @FlaggedForAnalysis
@@ -202,3 +201,4 @@ def read_annotations(file):
             anno_i for anno_i in annos_i if anno_i.get("@subtype") == "ROIAnnotation"
         ]
     return annos
+
