@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.1 (2025-10-08)
+Summary:    Laboratory Quality Control v2.1 (2025-10-09)
 DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -388,7 +388,12 @@ def get_img_chans_stats(image, annos=[], chans_limits={}, chans_means={}):
         if has_annos:
             pixls = np.where(mask, pixls, np.nan)
         # prepare specific or generic limits for channel
-        chan_limits = chans_limits.get(chan, chans_limits.get("*", None))
+        generic_limits = chans_limits.get("*", {})
+        specific_limits = chans_limits.get(chan, {})
+        chan_limits = {
+            "lower": specific_limits.get("lower", generic_limits.get("lower", None)),
+            "upper": specific_limits.get("upper", generic_limits.get("upper", None)),
+        }
         # calculate channel statistics from pixel data
         if chan in chans_means and chans_means[chan] is not None:
             img_chans_stats[chan] = get_chan_stats(

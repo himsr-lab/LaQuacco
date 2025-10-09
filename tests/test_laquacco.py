@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.1 (2025-10-08)
+Summary:    Laboratory Quality Control v2.1 (2025-10-09)
 DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -223,7 +223,8 @@ class TestLaquacco:
         # general limits
         chans_limits = {
             "*": {"lower": 64, "upper": 192},
-            "Channel 2": {"lower": None, "upper": 192},
+            "Channel 1": {"lower": 92},
+            "Channel 2": {"upper": 128},
         }
         img_chans_stats_results = laq.get_img_chans_stats(
             image, chans_limits=chans_limits
@@ -231,13 +232,13 @@ class TestLaquacco:
         img_chans_stats_expected = {
             "Channel 1": {
                 "max": 192.0,
-                "mean": 128.03079223632812,
-                "min": 64.0,
+                "mean": 141.96043395996094,
+                "min": 92.0,
             },
             "Channel 2": {
-                "max": 192.0,
-                "mean": 95.9103775024414,
-                "min": 0.0,
+                "max": 128.0,
+                "mean": 96.0129165649414,
+                "min": 64.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -246,22 +247,22 @@ class TestLaquacco:
         )
         img_chans_stats_expected = {
             "Channel 1": {
-                "band_0": 79.50962829589844,
-                "band_1": 111.54627990722656,
-                "band_2": 143.51385498046875,
-                "band_3": 176.0287322998047,
-                "lim_0": 96.0,
-                "lim_1": 128.0,
-                "lim_2": 160.0,
+                "band_0": 104.0078353881836,
+                "band_1": 128.9779815673828,
+                "band_2": 153.93226623535156,
+                "band_3": 179.48704528808594,
+                "lim_0": 117.0,
+                "lim_1": 142.0,
+                "lim_2": 167.0,
             },
             "Channel 2": {
-                "band_0": 23.506820678710938,
-                "band_1": 71.49815368652344,
-                "band_2": 119.53397369384766,
-                "band_3": 168.01846313476562,
-                "lim_0": 48.0,
+                "band_0": 71.49506378173828,
+                "band_1": 87.49365997314453,
+                "band_2": 103.49949645996094,
+                "band_3": 119.98409271240234,
+                "lim_0": 80.0,
                 "lim_1": 96.0,
-                "lim_2": 144.0,
+                "lim_2": 112.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
