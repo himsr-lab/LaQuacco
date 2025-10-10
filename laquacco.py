@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.1 (2025-10-09)
+Summary:    Laboratory Quality Control v2.1 (2025-10-10)
 DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -183,29 +183,29 @@ def get_chan_stats(pixls, chan_limits={}, chan_means=None):
     else:
         # get group channel stats
         sign_range = chan_means["max"] - chan_means["min"]
-        sign_lim_0 = chan_means["min"] + (1.0 / 4.0) * sign_range
-        result.update({"lim_0": sign_lim_0})
-        sign_lim_1 = chan_means["min"] + (2.0 / 4.0) * sign_range
+        sign_lim_1 = chan_means["min"] + (1.0 / 4.0) * sign_range
         result.update({"lim_1": sign_lim_1})
-        sign_lim_2 = chan_means["min"] + (3.0 / 4.0) * sign_range
+        sign_lim_2 = chan_means["min"] + (2.0 / 4.0) * sign_range
         result.update({"lim_2": sign_lim_2})
+        sign_lim_3 = chan_means["min"] + (3.0 / 4.0) * sign_range
+        result.update({"lim_3": sign_lim_3})
         query = [
-            # band_0: [−∞,sign_lim_0[
-            pl.when(row < sign_lim_0).then(row).drop_nans().mean().alias("band_0"),
-            # band_1: [sign_lim_0, sign_lim_1[
-            pl.when((row >= sign_lim_0) & (row < sign_lim_1))
-            .then(row)
-            .drop_nans()
-            .mean()
-            .alias("band_1"),
-            # band_2: [sign_lim_1, sign_lim_2[
+            # band_0: [−∞,sign_lim_1[
+            pl.when(row < sign_lim_1).then(row).drop_nans().mean().alias("band_0"),
+            # band_1: [sign_lim_1, sign_lim_2[
             pl.when((row >= sign_lim_1) & (row < sign_lim_2))
             .then(row)
             .drop_nans()
             .mean()
+            .alias("band_1"),
+            # band_2: [sign_lim_2, sign_lim_3[
+            pl.when((row >= sign_lim_2) & (row < sign_lim_3))
+            .then(row)
+            .drop_nans()
+            .mean()
             .alias("band_2"),
-            # band_3: [sign_lim_2, +∞]
-            pl.when(row >= sign_lim_2).then(row).drop_nans().mean().alias("band_3"),
+            # band_3: [sign_lim_3, +∞]
+            pl.when(row >= sign_lim_3).then(row).drop_nans().mean().alias("band_3"),
         ]
     result.update(get_query_results(interval, query))
     return result

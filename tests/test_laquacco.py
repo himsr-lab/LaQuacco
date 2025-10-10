@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.1 (2025-10-09)
+Summary:    Laboratory Quality Control v2.1 (2025-10-10)
 DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -119,18 +119,18 @@ class TestLaquacco:
                 "band_1": 95.56676483154297,
                 "band_2": 159.42735290527344,
                 "band_3": 223.61814880371094,
-                "lim_0": 63.75,
-                "lim_1": 127.5,
-                "lim_2": 191.25,
+                "lim_1": 63.75,
+                "lim_2": 127.5,
+                "lim_3": 191.25,
             },
             "Channel 2": {
                 "band_0": 31.487712860107422,
                 "band_1": 95.531494140625,
                 "band_2": 159.46923828125,
                 "band_3": 223.45974731445312,
-                "lim_0": 63.75,
-                "lim_1": 127.5,
-                "lim_2": 191.25,
+                "lim_1": 63.75,
+                "lim_2": 127.5,
+                "lim_3": 191.25,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -159,18 +159,18 @@ class TestLaquacco:
                 "band_1": 95.57157135009766,
                 "band_2": 159.35067749023438,
                 "band_3": 223.51089477539062,
-                "lim_0": 63.75,
-                "lim_1": 127.5,
-                "lim_2": 191.25,
+                "lim_1": 63.75,
+                "lim_2": 127.5,
+                "lim_3": 191.25,
             },
             "Channel 2": {
                 "band_0": 31.44708251953125,
                 "band_1": 95.59882354736328,
                 "band_2": 159.9837188720703,
                 "band_3": 223.3043670654297,
-                "lim_0": 63.75,
-                "lim_1": 127.5,
-                "lim_2": 191.25,
+                "lim_1": 63.75,
+                "lim_2": 127.5,
+                "lim_3": 191.25,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -205,18 +205,18 @@ class TestLaquacco:
                 "band_1": 135.5426483154297,
                 "band_2": 183.52175903320312,
                 "band_3": 231.60101318359375,
-                "lim_0": 111.75,
-                "lim_1": 159.5,
-                "lim_2": 207.25,
+                "lim_1": 111.75,
+                "lim_2": 159.5,
+                "lim_3": 207.25,
             },
             "Channel 2": {
                 "band_0": 23.506820678710938,
                 "band_1": 71.49815368652344,
                 "band_2": 119.53397369384766,
                 "band_3": 168.01846313476562,
-                "lim_0": 48.0,
-                "lim_1": 96.0,
-                "lim_2": 144.0,
+                "lim_1": 48.0,
+                "lim_2": 96.0,
+                "lim_3": 144.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -251,18 +251,18 @@ class TestLaquacco:
                 "band_1": 128.9779815673828,
                 "band_2": 153.93226623535156,
                 "band_3": 179.48704528808594,
-                "lim_0": 117.0,
-                "lim_1": 142.0,
-                "lim_2": 167.0,
+                "lim_1": 117.0,
+                "lim_2": 142.0,
+                "lim_3": 167.0,
             },
             "Channel 2": {
                 "band_0": 71.49506378173828,
                 "band_1": 87.49365997314453,
                 "band_2": 103.49949645996094,
                 "band_3": 119.98409271240234,
-                "lim_0": 80.0,
-                "lim_1": 96.0,
-                "lim_2": 112.0,
+                "lim_1": 80.0,
+                "lim_2": 96.0,
+                "lim_3": 112.0,
             },
         }
         assert img_chans_stats_results == img_chans_stats_expected
@@ -326,9 +326,9 @@ class TestLaquacco:
             "band_1": 95.35042572021484,
             "band_2": 159.4807586669922,
             "band_3": 223.58119201660156,
-            "lim_0": 63.75,
-            "lim_1": 127.5,
-            "lim_2": 191.25,
+            "lim_1": 63.75,
+            "lim_2": 127.5,
+            "lim_3": 191.25,
         }
         assert chan_stats_results == chan_stats_expected
 
