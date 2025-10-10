@@ -56,3 +56,59 @@ Running LaQuacco consists of two basic steps:
 2. Select `Run`->`Run All Cells` to execute the notebook.
 3. Save your notebook with `File`->`Save Notebook`.
 4. Optional: `Save and Export Notebook As`->`PDF`.
+
+## Examples
+The first notebook sections provide a high-level overview of your dataset's pixel intensity distributions:
+
+```text
+0 => './tests/image_1.ome.tiff'  # 2024-09-22 17:45:28
+1 => './tests/image_2.ome.tiff'  # 2024-09-22 17:46:58
+2 => './tests/image_3.ome.tiff'  # 2024-09-22 17:48:28
+3 => './tests/image_4.ome.tiff'  # 2024-09-22 17:49:58
+4 => './tests/image_5.ome.tiff'  # 2024-09-22 17:51:28
+
+Channel 1 @ 0.001s
+	max	    255.0 (mean)	    0.0 (std)
+	mean	  128.9 (mean)	   18.3 (std)
+	min	      0.0 (mean)	    0.0 (std)
+Channel 2 @ 0.001s
+	max	    255.0 (mean)	    0.0 (std)
+	mean	  127.4 (mean)	    0.0 (std)
+	min	      0.0 (mean)	    0.0 (std)
+```
+<img width="1478" height="839" alt="Violin chart for all channels" src="https://github.com/user-attachments/assets/0133e445-f15a-47ec-be53-0367ca21c577" />
+<br /><br />
+
+The next notebook section shows classical Levey-Jennings charts for each of your image channels and each of your images. Keep in mind that these charts plot mean pixel values for all pixels, even if large parts of the images contain background signal. In that case, you can increase the channels' `lower` limits to effectively ignore regions with very low signal intensity. Notice that `Channel 1` exhibits two images where the mean signal intensity deviates from the expected mean value:
+
+```text
+Channel 1 @ 0.001s
+	▲ +1std
+		  159.6 -> './tests/image_4.ome.tiff'
+	▼ -1std
+		  101.9 -> './tests/image_2.ome.tiff'
+```
+<img width="1478" height="839" alt="Levey-Jennings chart for Channel 1" src="https://github.com/user-attachments/assets/400465b5-f261-47f7-8d7e-58893cd0d90c" />
+<br /><br />
+
+The last notebook section contains custom Levey-Jennings charts that evenly break up the summarized data into four distinct channel bands (C-bands), corresponding to mean background (`band_0`), mean low signal (`band_1`), mean medium signal (`band_2`), and mean high signal (`band_3`) intensities. You can now see that for `Channel 1`, `image_2.ome.tiff` deviates from the background and low signal bands, while `image_4` deviates from the medium and high signal bands:
+
+```text
+Channel 1 @ 0.001s
+	band_3
+		▲ +1std
+			  226.3 -> './tests/image_4.ome.tiff'
+	band_2
+		▲ +1std
+			  159.7 -> './tests/image_4.ome.tiff'
+	band_1
+		▼ -1std
+			   86.8 -> './tests/image_2.ome.tiff'
+	band_0
+		▲ +1std
+			   41.0 -> './tests/image_2.ome.tiff'
+```
+<img width="1478" height="839" alt="C-band charts for Channel 1" src="https://github.com/user-attachments/assets/37694701-cd14-456b-869b-2cd2f7c121a6" />
+<br /><br />
+
+All charts are interactive while the Jupyter Lab session is running: However, the current Jupyter framework does not allow for active content to be loaded into a new session for security reasons. Instead, a non-interactive version of the last session will be shown.
