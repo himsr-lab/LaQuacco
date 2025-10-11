@@ -328,7 +328,7 @@ def get_files(path="", pat="*", anti="", recurse=False):
 
 def get_img(file):
     """Open the image as TIFF file object and return its hanlde plus additional metadata
-    as a Python dictionary. Don't forget to close the file after using it!
+    as a Python dictionary. File is closed in Jupyter Lab notebook after use.
 
     Keyword arguments:
     file -- image file path
