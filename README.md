@@ -34,7 +34,7 @@ python -m venv LaQuacco
 (LaQuacco) cd LaQuacco
 
 # test successful installation (all tests must pass)
-(LaQuacco) pytest -vv tests
+(LaQuacco) PYTHONPATH=. pytest -vv tests
 
 # optional: install libraries for PDF exports using homebrew
 (LaQuacco) brew install pandoc
