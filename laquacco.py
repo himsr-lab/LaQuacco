@@ -21,7 +21,7 @@ Group:      Human Immune Monitoring Shared Resource (HIMSR)
             University of Colorado, Anschutz Medical Campus
 
 Title:      LaQuacco
-Summary:    Laboratory Quality Control v2.1 (2025-10-10)
+Summary:    Laboratory Quality Control v2.1 (2026-03-16)
 DOI:        10.5281/zenodo.17298006
 URL:        https://github.com/himsr-lab/LaQuacco
 """
@@ -235,7 +235,7 @@ def get_dates(tiff, xml_meta):
         except KeyError:
             acq = datetime.now()  # generated
     if not isinstance(acq, datetime):
-        acq = parser.parse(acq)  # voodoo 🐔
+        acq = parser.parse(acq).replace(tzinfo=None)  # (cursed) voodoo 🐔
     acqs = [acq for _ in range(pages_len)]
     return acqs
 
