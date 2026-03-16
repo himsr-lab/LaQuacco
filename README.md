@@ -4,7 +4,7 @@
 ![image](https://github.com/christianrickert/LaQuacco/assets/19319377/80dad1f9-3ecf-4be1-afbb-46438bd0066f)
 
 ## Purpose
-LaQuacco produces pixel-based [Levey–Jennings charts](https://en.wikipedia.org/wiki/Laboratory_quality_control#Levey%E2%80%93Jennings_chart) of a dataset of images for quality control and documentation.
+LaQuacco produces pixel-based [Levey–Jennings charts](https://en.wikipedia.org/wiki/Laboratory_quality_control#Levey%E2%80%93Jennings_chart) of an image dataset for quality control and documentation.
 
 ## Motivation
 Maintaining consistency in immunofluorescence staining and imaging when processing large batches of tissue sections remains a technical challenge. It is therefore important to track the experimental output for any deviations from an optimal outcome. However, manual screening of hundreds of images across dozens of signal channels is not feasible: LaQuacco therefore collects basic statistical parameters from any given image dataset and displays simple diagnostic charts to identify signal outliers (stochastic events) or signal drift (systematic events).
